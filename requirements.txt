@@ -11,3 +11,4 @@ qrcode
 Pillow
 psutil
 persiantools
+currency-converter
