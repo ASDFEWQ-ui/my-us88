@@ -103,7 +103,7 @@ flask_app = Flask(__name__)
 def home():
     return jsonify({
         "status": "running",
-        "bot": "Gap_5_bot",
+        "bot": "boot_nano_bot",
         "version": "4.8.0"
     })
 
@@ -190,7 +190,7 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN")
 if not BOT_TOKEN:
     raise RuntimeError("متغیر محیطی BOT_TOKEN تنظیم نشده! توی Railway برو Variables و مقدار BOT_TOKEN رو با توکن جدیدت ست کن.")
 ADMIN_ID = 6443963679
-BOT_USERNAME = "Gap_5_bot"
+BOT_USERNAME = "boot_nano_bot"
 MUSIC_BOT = "Gap_4_bot"
 
 SESSIONS_FOLDER = 'user_sessions'
