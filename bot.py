@@ -16,13 +16,13 @@ from datetime import datetime, timedelta
 from urllib.parse import quote
 
 # ======================================================
-# تنظیمات لاگر
+# تنظیمات لاگر - باید قبل از هر استفاده‌ای تعریف شود
 # ======================================================
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 # ======================================================
-# مدیریت منطقه زمانی
+# مدیریت منطقه زمانی (بدون pytz) - کاملاً سازگار با Python 3.13
 # ======================================================
 try:
     from zoneinfo import ZoneInfo
@@ -50,7 +50,7 @@ def get_now():
         return datetime.utcnow() + timedelta(hours=3, minutes=30)
 
 # ======================================================
-# پچ کردن jdatetime و hijridate
+# پچ کردن jdatetime و hijridate برای کار با zoneinfo
 # ======================================================
 class _FakePytz:
     class timezone:
@@ -127,7 +127,7 @@ except:
     pass
 
 # ======================================================
-# هوش مصنوعی
+# هوش مصنوعی جدید (جایگزین هوش‌های قبلی)
 # ======================================================
 AI_APIS = {
     "deepseek": {
@@ -188,7 +188,7 @@ PHOTO_APIS = {
 # ======================================================
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 if not BOT_TOKEN:
-    raise RuntimeError("متغیر محیطی BOT_TOKEN تنظیم نشده!")
+    raise RuntimeError("متغیر محیطی BOT_TOKEN تنظیم نشده! توی Railway برو Variables و مقدار BOT_TOKEN رو با توکن جدیدت ست کن.")
 ADMIN_ID = 6443963679
 BOT_USERNAME = "Gap_5_bot"
 MUSIC_BOT = "Gap_4_bot"
@@ -373,7 +373,6 @@ class MainDatabase:
         conn = sqlite3.connect(self.db_name)
         cursor = conn.cursor()
         
-        # ===== جداول اصلی =====
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS media_locks (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -467,6 +466,12 @@ class MainDatabase:
                 autosend_mode BOOLEAN DEFAULT 0,
                 text_style TEXT,
                 report_group_id INTEGER DEFAULT -1002817019483,
+                ai_1_pm BOOLEAN DEFAULT 0,
+                ai_2_pm BOOLEAN DEFAULT 0,
+                ai_3_pm BOOLEAN DEFAULT 0,
+                ai_1_group BOOLEAN DEFAULT 0,
+                ai_2_group BOOLEAN DEFAULT 0,
+                ai_3_group BOOLEAN DEFAULT 0,
                 translate_english BOOLEAN DEFAULT 0,
                 translate_arabic BOOLEAN DEFAULT 0,
                 translate_hebrew BOOLEAN DEFAULT 0,
@@ -649,7 +654,6 @@ class MainDatabase:
             )
         ''')
         
-        # ===== جدول مدیریت دکمه‌ها =====
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS button_settings (
                 user_id INTEGER PRIMARY KEY,
@@ -659,7 +663,6 @@ class MainDatabase:
             )
         ''')
         
-        # ===== جدول دیتابیس بکاپ =====
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS db_backup_settings (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -672,7 +675,6 @@ class MainDatabase:
             )
         ''')
         
-        # ===== ستون‌های هوش مصنوعی جدید =====
         cursor.execute("PRAGMA table_info(selfbot_settings)")
         columns = [col[1] for col in cursor.fetchall()]
         new_ai_columns = [
@@ -687,11 +689,17 @@ class MainDatabase:
             ('ai_blackbox_group', 'BOOLEAN DEFAULT 0'),
             ('ai_openai_group', 'BOOLEAN DEFAULT 0'),
             ('ai_openai_model', 'TEXT DEFAULT "gpt-4o"'),
+        ]
+        for col_name, col_type in new_ai_columns:
+            if col_name not in columns:
+                cursor.execute(f"ALTER TABLE selfbot_settings ADD COLUMN {col_name} {col_type}")
+        
+        image_ai_columns = [
             ('ai_photo_enabled', 'BOOLEAN DEFAULT 0'),
             ('ai_photo_style', 'TEXT DEFAULT "anime"'),
             ('ai_photo_type', 'TEXT DEFAULT "aiphoto"')
         ]
-        for col_name, col_type in new_ai_columns:
+        for col_name, col_type in image_ai_columns:
             if col_name not in columns:
                 cursor.execute(f"ALTER TABLE selfbot_settings ADD COLUMN {col_name} {col_type}")
         
@@ -699,7 +707,7 @@ class MainDatabase:
         conn.close()
         logger.info("✓ دیتابیس اصلی ایجاد شد")
     
-    # ===== متدهای مدیریت دکمه‌ها =====
+    # ===== متدهای مربوط به دکمه‌ها =====
     def get_button_settings(self, user_id):
         conn = sqlite3.connect(self.db_name)
         cursor = conn.cursor()
@@ -733,7 +741,7 @@ class MainDatabase:
         data = self.get_button_settings(user_id)
         return data.get(button_key, True)
     
-    # ===== متدهای دیتابیس بکاپ =====
+    # ===== متدهای مربوط به دیتابیس بکاپ =====
     def get_db_backup_settings(self):
         conn = sqlite3.connect(self.db_name)
         cursor = conn.cursor()
@@ -743,7 +751,12 @@ class MainDatabase:
         conn.close()
         if row:
             return dict(zip(columns, row))
-        return {'auto_send_enabled': 1, 'last_sent': None, 'send_to_group': 0, 'group_id': None}
+        return {
+            'auto_send_enabled': 1,
+            'last_sent': None,
+            'send_to_group': 0,
+            'group_id': None
+        }
     
     def set_db_backup_settings(self, auto_send_enabled=None, send_to_group=None, group_id=None):
         conn = sqlite3.connect(self.db_name)
@@ -773,7 +786,7 @@ class MainDatabase:
         conn.commit()
         conn.close()
     
-    # ===== متدهای هوش مصنوعی =====
+    # ===== متدهای هوش مصنوعی جدید =====
     def get_ai_status(self, user_id):
         conn = sqlite3.connect(self.db_name)
         cursor = conn.cursor()
@@ -835,11 +848,18 @@ class MainDatabase:
     def get_photo_ai(self, user_id):
         conn = sqlite3.connect(self.db_name)
         cursor = conn.cursor()
-        cursor.execute('SELECT ai_photo_enabled, ai_photo_style, ai_photo_type FROM selfbot_settings WHERE user_id = ?', (user_id,))
+        cursor.execute('''
+            SELECT ai_photo_enabled, ai_photo_style, ai_photo_type 
+            FROM selfbot_settings WHERE user_id = ?
+        ''', (user_id,))
         row = cursor.fetchone()
         conn.close()
         if row:
-            return {'enabled': bool(row[0]), 'style': row[1] or 'anime', 'type': row[2] or 'aiphoto'}
+            return {
+                'enabled': bool(row[0]),
+                'style': row[1] or 'anime',
+                'type': row[2] or 'aiphoto'
+            }
         return {'enabled': False, 'style': 'anime', 'type': 'aiphoto'}
     
     # ===== متدهای قبلی =====
@@ -960,6 +980,12 @@ class MainDatabase:
                 'autosend_mode': 0,
                 'text_style': None,
                 'report_group_id': GROUP_ID,
+                'ai_1_pm': 0,
+                'ai_2_pm': 0,
+                'ai_3_pm': 0,
+                'ai_1_group': 0,
+                'ai_2_group': 0,
+                'ai_3_group': 0,
                 'translate_english': 0,
                 'translate_arabic': 0,
                 'translate_hebrew': 0,
@@ -1628,7 +1654,6 @@ def convert_persian_to_english(text):
     return text
 
 def persian_to_english_digits(text):
-    """تبدیل اعداد فارسی به انگلیسی"""
     if not text:
         return text
     persian = '۰۱۲۳۴۵۶۷۸۹'
@@ -1790,7 +1815,7 @@ def convert_to_classic_font(text, font_index):
         return ''.join(font[int(c)] if c.isdigit() else c for c in text)
 
 # ======================================================
-# توابع هوش مصنوعی
+# توابع جدید هوش مصنوعی
 # ======================================================
 async def get_ai_response(text, ai_type, user_id=None, model=None):
     try:
@@ -1976,6 +2001,10 @@ async def advanced_heart_animation(message):
     await message.edit("❤️ I Love You")
     await asyncio.sleep(3)
     await message.edit("❤️ I Love You <3")
+
+# ======================================================
+# کلاس SelfBotManager - ادامه
+# ======================================================
 
 class SelfBotManager:
     def __init__(self, user_id):
@@ -2507,6 +2536,9 @@ class SelfBotManager:
         except Exception as e:
             logger.error(f"خطا در تنظیم هندلرها برای کاربر {self.user_id}: {e}")
     
+    # ====================================================
+    # متد handle_commands
+    # ====================================================
     async def handle_commands(self, event):
         if event.sender_id != self.my_id:
             return
@@ -2751,7 +2783,7 @@ class SelfBotManager:
                 await asyncio.sleep(1)
             return
         
-        # ========== هوش مصنوعی ==========
+        # ========== هوش مصنوعی جدید ==========
         ai_mapping = {
             'دیپ‌سیک': 'deepseek',
             'چت‌جی‌پی‌تی': 'chatgpt',
@@ -2813,7 +2845,7 @@ class SelfBotManager:
             return
         
         # ========== ساخت عکس ==========
-        if cmd in ['ساخت عکس هوش', 'ساخت عکس gpt', 'جیبلی']:
+        if cmd in ['ساخت عکس', 'ساخت عکس هوش', 'ساخت عکس gpt', 'جیبلی']:
             photo_type_map = {
                 'ساخت عکس هوش': 'aiphoto',
                 'ساخت عکس gpt': 'gptphoto',
@@ -2833,15 +2865,7 @@ class SelfBotManager:
                 try:
                     photo_path = await self.client.download_media(reply_msg.photo)
                     if photo_path:
-                        # آپلود به سرور و دریافت URL
-                        await event.edit("🔄 در حال آپلود و تبدیل...")
-                        # برای این مثال از یک URL نمونه استفاده می‌کنیم
-                        result = await generate_photo("", "ghibli", image_url=photo_path)
-                        if result:
-                            await self.client.send_message(chat_id, f"🎨 عکس تبدیل شده:\n{result}")
-                            await event.delete()
-                        else:
-                            await event.edit("❌ خطا در تبدیل عکس")
+                        await event.edit("❌ این قابلیت نیاز به آپلود فایل دارد و در حال حاضر پشتیبانی نمی‌شود")
                         if os.path.exists(photo_path):
                             os.remove(photo_path)
                     else:
@@ -2876,7 +2900,7 @@ class SelfBotManager:
             return
         
         # ====================================================
-        # ادامه دستورات
+        # ادامه دستورات قبلی
         # ====================================================
         
         if cmd == 'سلف' and args and args[0] in ['روشن', 'خاموش']:
@@ -4978,6 +5002,7 @@ class SelfBotManager:
 # توابع پنل اینلاین و کیبوردها
 # ======================================================
 
+# متغیرهای جدید برای دیتابیس بکاپ
 DB_BACKUP_SETTINGS = db.get_db_backup_settings()
 DB_AUTO_SEND_ENABLED = DB_BACKUP_SETTINGS.get('auto_send_enabled', 1)
 DB_SEND_TO_GROUP = DB_BACKUP_SETTINGS.get('send_to_group', 0)
@@ -4987,150 +5012,96 @@ DB_GROUP_ID = DB_BACKUP_SETTINGS.get('group_id', None)
 # کیبورد عددی برای کد تایید
 # ======================================================
 def get_code_keyboard(user_id):
+    """ساخت کیبورد عددی برای وارد کردن کد تایید"""
     keyboard = [
         [
-            InlineKeyboardButton("۱", callback_data=f"code_1_{user_id}", style="primary"),
-            InlineKeyboardButton("۲", callback_data=f"code_2_{user_id}", style="primary"),
-            InlineKeyboardButton("۳", callback_data=f"code_3_{user_id}", style="primary")
+            InlineKeyboardButton("۱", callback_data=f"code_1_{user_id}"),
+            InlineKeyboardButton("۲", callback_data=f"code_2_{user_id}"),
+            InlineKeyboardButton("۳", callback_data=f"code_3_{user_id}")
         ],
         [
-            InlineKeyboardButton("۴", callback_data=f"code_4_{user_id}", style="primary"),
-            InlineKeyboardButton("۵", callback_data=f"code_5_{user_id}", style="primary"),
-            InlineKeyboardButton("۶", callback_data=f"code_6_{user_id}", style="primary")
+            InlineKeyboardButton("۴", callback_data=f"code_4_{user_id}"),
+            InlineKeyboardButton("۵", callback_data=f"code_5_{user_id}"),
+            InlineKeyboardButton("۶", callback_data=f"code_6_{user_id}")
         ],
         [
-            InlineKeyboardButton("۷", callback_data=f"code_7_{user_id}", style="primary"),
-            InlineKeyboardButton("۸", callback_data=f"code_8_{user_id}", style="primary"),
-            InlineKeyboardButton("۹", callback_data=f"code_9_{user_id}", style="primary")
+            InlineKeyboardButton("۷", callback_data=f"code_7_{user_id}"),
+            InlineKeyboardButton("۸", callback_data=f"code_8_{user_id}"),
+            InlineKeyboardButton("۹", callback_data=f"code_9_{user_id}")
         ],
         [
-            InlineKeyboardButton("⌫ حذف", callback_data=f"code_del_{user_id}", style="danger"),
-            InlineKeyboardButton("۰", callback_data=f"code_0_{user_id}", style="primary"),
-            InlineKeyboardButton("🗑 پاک", callback_data=f"code_clear_{user_id}", style="danger")
+            InlineKeyboardButton("⌫", callback_data=f"code_del_{user_id}"),
+            InlineKeyboardButton("۰", callback_data=f"code_0_{user_id}"),
+            InlineKeyboardButton("🗑", callback_data=f"code_clear_{user_id}")
         ],
         [
-            InlineKeyboardButton("✅ تأیید کد", callback_data=f"code_done_{user_id}", style="success")
+            InlineKeyboardButton("✅ تأیید کد", callback_data=f"code_done_{user_id}")
         ],
         [
-            InlineKeyboardButton("❌ انصراف", callback_data=f"code_cancel_{user_id}", style="danger")
+            InlineKeyboardButton("❌ انصراف", callback_data=f"code_cancel_{user_id}")
         ]
     ]
     return InlineKeyboardMarkup(keyboard)
 
 # ======================================================
-# کیبورد مدیریت فونت‌های تایم
+# تابع کمک‌کننده برای ساخت دکمه‌های رنگی
 # ======================================================
-def get_time_font_keyboard(user_id):
-    settings = db.get_selfbot_settings(user_id)
-    time_enabled = settings.get('time_enabled', False)
-    flag_enabled = settings.get('flag_enabled', False)
-    
-    keyboard = []
-    row = []
-    for i, font in enumerate(classic_fonts[:5]):
-        row.append(InlineKeyboardButton(
-            f"{i}", 
-            callback_data=f"font_set_{i}_{user_id}",
-            style="primary"
-        ))
-    keyboard.append(row)
-    
-    row2 = []
-    for i, font in enumerate(classic_fonts[5:]):
-        row2.append(InlineKeyboardButton(
-            f"{i+5}", 
-            callback_data=f"font_set_{i+5}_{user_id}",
-            style="primary"
-        ))
-    keyboard.append(row2)
-    
-    current = settings.get('time_font_indices', 'all')
-    if current == 'all':
-        current_display = "همه"
-    elif isinstance(current, list):
-        current_display = ", ".join(map(str, current))
+def color_button(text, callback_data, is_active=False):
+    """ساخت دکمه با رنگ مناسب بر اساس وضعیت فعال/غیرفعال"""
+    # در telegram.InlineKeyboardButton استایل‌های مختلف وجود ندارد
+    # ما از ایموجی برای نشان دادن وضعیت استفاده می‌کنیم
+    if is_active:
+        return InlineKeyboardButton(f"✅ {text}", callback_data=callback_data)
     else:
-        current_display = str(current)
-    
-    keyboard.append([
-        InlineKeyboardButton(f"🎨 فونت فعلی: {current_display}", callback_data=f"font_show_{user_id}", style="secondary")
-    ])
-    keyboard.append([
-        InlineKeyboardButton("🔄 همه فونت‌ها", callback_data=f"font_all_{user_id}", style="primary"),
-        InlineKeyboardButton("🔄 چرخشی", callback_data=f"font_cycle_{user_id}", style="primary")
-    ])
-    keyboard.append([
-        InlineKeyboardButton(f"🕐 تایم {'' if not time_enabled else '✓'}", callback_data=f"exec_time_on_{user_id}", style="success" if not time_enabled else "primary"),
-        InlineKeyboardButton(f"🚫 تایم خاموش {'' if time_enabled else '✓'}", callback_data=f"exec_time_off_{user_id}", style="danger" if time_enabled else "primary")
-    ])
-    keyboard.append([
-        InlineKeyboardButton(f"🏳️ پرچم {'' if not flag_enabled else '✓'}", callback_data=f"exec_time_flag_{user_id}", style="success" if not flag_enabled else "primary"),
-        InlineKeyboardButton("📅 تقویم", callback_data=f"exec_calendar_{user_id}", style="primary")
-    ])
-    keyboard.append([
-        InlineKeyboardButton("📝 تنظیمات بیو", callback_data=f"bio_menu_{user_id}", style="primary")
-    ])
-    keyboard.append([
-        InlineKeyboardButton("📖 راهنما", callback_data=f"help_time_{user_id}", style="primary"),
-        InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main", style="danger")
-    ])
-    return InlineKeyboardMarkup(keyboard)
+        return InlineKeyboardButton(f"⬜ {text}", callback_data=callback_data)
 
 # ======================================================
 # کیبورد پنل اصلی
 # ======================================================
 def get_main_panel_keyboard(user_id):
+    # دریافت وضعیت دکمه‌ها از دیتابیس
+    button_states = db.get_button_settings(user_id)
+    
+    # تعریف دکمه‌ها با وضعیت
+    time_btn = color_button("⚈ زمان و پروفایل", f"time_menu_{user_id}", button_states.get("button_time", True))
+    anim_btn = color_button("☻ انیمیشن", f"animation_menu_{user_id}", button_states.get("button_animation", True))
+    user_btn = color_button("☗ مدیریت کاربران", f"user_menu_{user_id}", button_states.get("button_user", True))
+    lock_btn = color_button("⊖ قفل رسانه", f"lock_menu_{user_id}", button_states.get("button_lock", True))
+    comment_btn = color_button("✼ کامنت", f"comment_menu_{user_id}", button_states.get("button_comment", True))
+    general_btn = color_button("✿ عمومی", f"general_menu_{user_id}", button_states.get("button_general", True))
+    action_btn = color_button("☥ اکشن", f"action_menu_{user_id}", button_states.get("button_action", True))
+    games_btn = color_button("⚕ بازی‌ها", f"games_menu_{user_id}", button_states.get("button_games", True))
+    translate_btn = color_button("❍ ترجمه", f"translate_menu_{user_id}", button_states.get("button_translate", True))
+    google_btn = color_button("𖢅 گوگل", f"google_menu_{user_id}", button_states.get("button_google", True))
+    info_btn = color_button("֍ اطلاعاتی", f"info_menu_{user_id}", button_states.get("button_info", True))
+    profile_btn = color_button("𖢨 پروفایل", f"profile_menu_{user_id}", button_states.get("button_profile", True))
+    style_btn = color_button("⩐ استایل متن", f"style_menu_{user_id}", button_states.get("button_style", True))
+    message_btn = color_button("𑪡 مدیریت پیام", f"message_menu_{user_id}", button_states.get("button_message", True))
+    reaction_btn = color_button("☖ ریکشن", f"reaction_menu_{user_id}", button_states.get("button_reaction", True))
+    spam_btn = color_button("𖥞 اسپم", f"spam_menu_{user_id}", button_states.get("button_spam", True))
+    change_btn = color_button("☗ تغییر پروفایل", f"change_menu_{user_id}", button_states.get("button_change", True))
+    enemy_btn = color_button("⚇ مدیریت دشمنان", f"enemy_menu_{user_id}", button_states.get("button_enemy", True))
+    filter_btn = color_button("✿ فیلتر کلمات", f"filter_menu_{user_id}", button_states.get("button_filter", True))
+    protection_btn = color_button("⚉ حفاظت اسپم", f"protection_menu_{user_id}", button_states.get("button_protection", True))
+    ai_btn = color_button("☥ هوش مصنوعی", f"ai_menu_{user_id}", button_states.get("button_ai", True))
+    report_btn = color_button("֎ گزارش", f"report_menu_{user_id}", button_states.get("button_report", True))
+    tools_btn = color_button("🛠 ابزار", f"tools_menu_{user_id}", button_states.get("button_tools", True))
+    monshi_btn = color_button("🤖 منشی هوشمند", f"monshi_menu_{user_id}", button_states.get("button_monshi", True))
+    mention_btn = color_button("🏷️ تگ همه", f"mention_menu_{user_id}", button_states.get("button_mention", True))
+    fortune_btn = color_button("🔮 فال", f"fortune_menu_{user_id}", button_states.get("button_fortune", True))
+    buttons_btn = color_button("🔘 مدیریت دکمه‌ها", f"buttons_menu_{user_id}", True)
+    
     keyboard = [
-        [
-            InlineKeyboardButton("⚈ زمان و پروفایل", callback_data=f"time_menu_{user_id}", style="primary"),
-            InlineKeyboardButton("☻ انیمیشن", callback_data=f"animation_menu_{user_id}", style="primary"),
-            InlineKeyboardButton("☗ مدیریت کاربران", callback_data=f"user_menu_{user_id}", style="primary")
-        ],
-        [
-            InlineKeyboardButton("⊖ قفل رسانه", callback_data=f"lock_menu_{user_id}", style="danger"),
-            InlineKeyboardButton("✼ کامنت", callback_data=f"comment_menu_{user_id}", style="success"),
-            InlineKeyboardButton("✿ عمومی", callback_data=f"general_menu_{user_id}", style="primary")
-        ],
-        [
-            InlineKeyboardButton("☥ اکشن", callback_data=f"action_menu_{user_id}", style="primary"),
-            InlineKeyboardButton("⚕ بازی‌ها", callback_data=f"games_menu_{user_id}", style="primary"),
-            InlineKeyboardButton("❍ ترجمه", callback_data=f"translate_menu_{user_id}", style="primary")
-        ],
-        [
-            InlineKeyboardButton("𖢅 گوگل", callback_data=f"google_menu_{user_id}", style="primary"),
-            InlineKeyboardButton("֍ اطلاعاتی", callback_data=f"info_menu_{user_id}", style="primary"),
-            InlineKeyboardButton("𖢨 پروفایل", callback_data=f"profile_menu_{user_id}", style="primary")
-        ],
-        [
-            InlineKeyboardButton("⩐ استایل متن", callback_data=f"style_menu_{user_id}", style="primary"),
-            InlineKeyboardButton("𑪡 مدیریت پیام", callback_data=f"message_menu_{user_id}", style="primary"),
-            InlineKeyboardButton("☖ ریکشن", callback_data=f"reaction_menu_{user_id}", style="primary")
-        ],
-        [
-            InlineKeyboardButton("𖥞 اسپم", callback_data=f"spam_menu_{user_id}", style="danger"),
-            InlineKeyboardButton("☗ تغییر پروفایل", callback_data=f"change_menu_{user_id}", style="primary"),
-            InlineKeyboardButton("⚇ مدیریت دشمنان", callback_data=f"enemy_menu_{user_id}", style="danger")
-        ],
-        [
-            InlineKeyboardButton("✿ فیلتر کلمات", callback_data=f"filter_menu_{user_id}", style="primary"),
-            InlineKeyboardButton("⚉ حفاظت اسپم", callback_data=f"protection_menu_{user_id}", style="primary"),
-            InlineKeyboardButton("☥ هوش مصنوعی", callback_data=f"ai_menu_{user_id}", style="primary")
-        ],
-        [
-            InlineKeyboardButton("֎ گزارش", callback_data=f"report_menu_{user_id}", style="primary"),
-            InlineKeyboardButton("🛠 ابزار", callback_data=f"tools_menu_{user_id}", style="primary")
-        ],
-        [
-            InlineKeyboardButton("🤖 منشی هوشمند", callback_data=f"monshi_menu_{user_id}", style="success"),
-            InlineKeyboardButton("🏷️ تگ همه", callback_data=f"mention_menu_{user_id}", style="primary")
-        ],
-        [
-            InlineKeyboardButton("🔮 فال", callback_data=f"fortune_menu_{user_id}", style="primary"),
-            InlineKeyboardButton("🔘 مدیریت دکمه‌ها", callback_data=f"buttons_menu_{user_id}", style="primary")
-        ],
-        [
-            InlineKeyboardButton("❌ بستن پنل", callback_data=f"close_panel_{user_id}", style="danger")
-        ]
+        [time_btn, anim_btn, user_btn],
+        [lock_btn, comment_btn, general_btn],
+        [action_btn, games_btn, translate_btn],
+        [google_btn, info_btn, profile_btn],
+        [style_btn, message_btn, reaction_btn],
+        [spam_btn, change_btn, enemy_btn],
+        [filter_btn, protection_btn, ai_btn],
+        [report_btn, tools_btn, monshi_btn],
+        [mention_btn, fortune_btn, buttons_btn],
+        [InlineKeyboardButton("❌ بستن پنل", callback_data=f"close_panel_{user_id}")]
     ]
     return InlineKeyboardMarkup(keyboard)
 
@@ -5172,45 +5143,585 @@ def get_buttons_menu_keyboard(user_id):
     keyboard = []
     for display_name, key in button_list:
         is_enabled = button_states.get(key, True)
-        style = "primary" if is_enabled else "secondary"
         icon = "✅" if is_enabled else "❌"
         keyboard.append([
             InlineKeyboardButton(
                 f"{icon} {display_name}",
-                callback_data=f"toggle_button_{key}_{user_id}",
-                style=style
+                callback_data=f"toggle_button_{key}_{user_id}"
             )
         ])
     
     keyboard.append([
-        InlineKeyboardButton("✅ روشن کردن همه", callback_data=f"buttons_on_all_{user_id}", style="success"),
-        InlineKeyboardButton("❌ خاموش کردن همه", callback_data=f"buttons_off_all_{user_id}", style="danger")
+        InlineKeyboardButton("✅ روشن کردن همه", callback_data=f"buttons_on_all_{user_id}"),
+        InlineKeyboardButton("❌ خاموش کردن همه", callback_data=f"buttons_off_all_{user_id}")
     ])
     keyboard.append([
-        InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main", style="danger")
+        InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main")
     ])
     return InlineKeyboardMarkup(keyboard)
 
 # ======================================================
-# کیبورد پنل ادمین
+# ادامه کیبوردهای بخش‌ها (با رنگ‌بندی و تیک)
 # ======================================================
-def get_admin_panel_keyboard():
-    db_settings = db.get_db_backup_settings()
-    auto_status = "✅" if db_settings.get('auto_send_enabled') else "❌"
-    send_to_group = "✅" if db_settings.get('send_to_group') else "❌"
+
+def get_time_menu_keyboard(user_id):
+    settings = db.get_selfbot_settings(user_id)
+    time_enabled = settings.get('time_enabled', False)
+    flag_enabled = settings.get('flag_enabled', False)
+    
+    time_btn = color_button("🕐 تایم روشن", f"exec_time_on_{user_id}", time_enabled)
+    flag_btn = color_button("🏳️ تایمر پرچم", f"exec_time_flag_{user_id}", flag_enabled)
+    time_off_btn = color_button("🚫 تایم خاموش", f"exec_time_off_{user_id}", not time_enabled)
+    calendar_btn = InlineKeyboardButton("📅 تقویم", callback_data=f"exec_calendar_{user_id}")
+    bio_btn = InlineKeyboardButton("📝 تنظیمات بیو", callback_data=f"bio_menu_{user_id}")
+    help_btn = InlineKeyboardButton("📖 راهنما", callback_data=f"help_time_{user_id}")
+    back_btn = InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main")
     
     keyboard = [
-        [InlineKeyboardButton("📋 درخواست‌ها", callback_data="admin_requests", style="primary"), InlineKeyboardButton("🔐 منتظر ورود", callback_data="admin_login", style="primary")],
-        [InlineKeyboardButton("✅ کاربران فعال", callback_data="admin_active", style="success"), InlineKeyboardButton("🤖 سلف‌بات‌ها", callback_data="admin_selfbots", style="primary")],
-        [InlineKeyboardButton("📊 آمار کلی", callback_data="admin_stats", style="primary"), InlineKeyboardButton("📢 پیام همگانی", callback_data="admin_broadcast", style="primary")],
-        [InlineKeyboardButton("📤 دریافت دیتابیس", callback_data="admin_get_db", style="primary"), InlineKeyboardButton("📥 آپلود دیتابیس", callback_data="admin_upload_db", style="primary")],
-        [InlineKeyboardButton(f"⏰ ارسال خودکار {auto_status}", callback_data="admin_toggle_auto_db", style="primary"), InlineKeyboardButton(f"📨 ارسال به گروه {send_to_group}", callback_data="admin_toggle_group_db", style="primary")],
-        [InlineKeyboardButton("⚈ بازگشت", callback_data="back_main", style="danger")]
+        [time_btn, flag_btn],
+        [time_off_btn, calendar_btn],
+        [bio_btn],
+        [help_btn, back_btn]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_bio_menu_keyboard(user_id):
+    bio_time1 = db.get_bio_setting(user_id, 'ساعت_در_بیو')
+    bio_time2 = db.get_bio_setting(user_id, 'ساعت_در_بیو_۲')
+    bio_date = db.get_bio_setting(user_id, 'بیو_تاریخ')
+    bio_full = db.get_bio_setting(user_id, 'بیو_کامل')
+    bio_love = db.get_bio_setting(user_id, 'بیو_عاشقانه')
+    bio_emoji = db.get_bio_setting(user_id, 'بیو_ایموجی')
+    bio_season = db.get_bio_setting(user_id, 'بیو_فصل')
+    bio_weekday = db.get_bio_setting(user_id, 'بیو_روز_هفته')
+    bio_countdown = db.get_bio_setting(user_id, 'بیو_شمارش_معکوس')
+    bio_custom = db.get_bio_setting(user_id, 'بیو_متن_دلخواه')
+    
+    keyboard = [
+        [
+            color_button("🕐 ساعت در بیو", f"exec_bio_time1_{user_id}", bio_time1 == 'روشن'),
+            color_button("🕐 ساعت در بیو ۲", f"exec_bio_time2_{user_id}", bio_time2 == 'روشن')
+        ],
+        [
+            color_button("📅 بیو تاریخ", f"exec_bio_date_{user_id}", bio_date == 'روشن'),
+            color_button("📅 بیو کامل", f"exec_bio_full_{user_id}", bio_full == 'روشن')
+        ],
+        [
+            color_button("💕 بیو عاشقانه", f"exec_bio_love_{user_id}", bio_love == 'روشن'),
+            color_button("🎨 بیو ایموجی", f"exec_bio_emoji_{user_id}", bio_emoji == 'روشن')
+        ],
+        [
+            color_button("🌸 بیو فصل", f"exec_bio_season_{user_id}", bio_season == 'روشن'),
+            color_button("📆 بیو روز هفته", f"exec_bio_weekday_{user_id}", bio_weekday == 'روشن')
+        ],
+        [
+            color_button("⏳ بیو شمارش معکوس", f"exec_bio_countdown_{user_id}", bio_countdown == 'روشن'),
+            color_button("✏️ بیو متن دلخواه", f"exec_bio_custom_{user_id}", bio_custom == 'روشن')
+        ],
+        [
+            InlineKeyboardButton("📖 راهنما", callback_data=f"help_time_{user_id}"),
+            InlineKeyboardButton("⚈ بازگشت", callback_data=f"time_menu_{user_id}")
+        ]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_lock_menu_keyboard(user_id):
+    keyboard = [
+        [
+            InlineKeyboardButton("🔗 قفل لینک", callback_data=f"exec_lock_link_{user_id}"),
+            InlineKeyboardButton("📸 قفل عکس", callback_data=f"exec_lock_photo_{user_id}"),
+            InlineKeyboardButton("🎥 قفل ویدیو", callback_data=f"exec_lock_video_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("🎨 قفل استیکر", callback_data=f"exec_lock_sticker_{user_id}"),
+            InlineKeyboardButton("🎞️ قفل گیف", callback_data=f"exec_lock_gif_{user_id}"),
+            InlineKeyboardButton("🎤 قفل ویس", callback_data=f"exec_lock_voice_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("📁 قفل فایل", callback_data=f"exec_lock_file_{user_id}"),
+            InlineKeyboardButton("🎵 قفل موزیک", callback_data=f"exec_lock_music_{user_id}"),
+            InlineKeyboardButton("📹 قفل ویدیو نوت", callback_data=f"exec_lock_video_note_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("📞 قفل کانتکت", callback_data=f"exec_lock_contact_{user_id}"),
+            InlineKeyboardButton("📍 قفل لوکیشن", callback_data=f"exec_lock_location_{user_id}"),
+            InlineKeyboardButton("😀 قفل ایموجی", callback_data=f"exec_lock_emoji_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("📝 قفل متن", callback_data=f"exec_lock_text_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("📖 راهنما", callback_data=f"help_lock_{user_id}"),
+            InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main")
+        ]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_ai_menu_keyboard(user_id):
+    ai_status = db.get_ai_status(user_id)
+    
+    # دکمه‌های هوش در پیوی
+    keyboard = [
+        [
+            color_button("🧠 دیپ‌سیک", f"exec_ai_deepseek_pm_{user_id}", ai_status['deepseek']['pm']),
+            color_button("💬 چت‌جی‌پی‌تی", f"exec_ai_chatgpt_pm_{user_id}", ai_status['chatgpt']['pm']),
+            color_button("🤖 گراک", f"exec_ai_grok_pm_{user_id}", ai_status['grok']['pm'])
+        ],
+        [
+            color_button("📦 بلک‌باکس", f"exec_ai_blackbox_pm_{user_id}", ai_status['blackbox']['pm']),
+            color_button("🟢 OpenAI", f"exec_ai_openai_pm_{user_id}", ai_status['openai']['pm']),
+            InlineKeyboardButton("⚫ خاموش پیوی", callback_data=f"exec_ai_pm_off_{user_id}")
+        ],
+        # دکمه‌های هوش در گروه
+        [
+            color_button("🧠 دیپ‌سیک", f"exec_ai_deepseek_group_{user_id}", ai_status['deepseek']['group']),
+            color_button("💬 چت‌جی‌پی‌تی", f"exec_ai_chatgpt_group_{user_id}", ai_status['chatgpt']['group']),
+            color_button("🤖 گراک", f"exec_ai_grok_group_{user_id}", ai_status['grok']['group'])
+        ],
+        [
+            color_button("📦 بلک‌باکس", f"exec_ai_blackbox_group_{user_id}", ai_status['blackbox']['group']),
+            color_button("🟢 OpenAI", f"exec_ai_openai_group_{user_id}", ai_status['openai']['group']),
+            InlineKeyboardButton("⚫ خاموش گروه", callback_data=f"exec_ai_group_off_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("🖼️ ساخت عکس", callback_data=f"exec_photo_ai_{user_id}"),
+            InlineKeyboardButton("🎨 استایل عکس", callback_data=f"exec_photo_style_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("📖 راهنما", callback_data=f"help_ai_{user_id}"),
+            InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main")
+        ]
     ]
     return InlineKeyboardMarkup(keyboard)
 
 # ======================================================
-# کیبورد راهنما
+# بقیه کیبوردها (با رنگ‌بندی ساده)
+# ======================================================
+
+def get_user_menu_keyboard(user_id):
+    keyboard = [
+        [
+            InlineKeyboardButton("🥷 دشمن", callback_data=f"exec_enemy_{user_id}"),
+            InlineKeyboardButton("🧸 دوست", callback_data=f"exec_friend_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("🔒 قفل پیوی", callback_data=f"exec_lock_pv_{user_id}"),
+            InlineKeyboardButton("🔓 باز پی", callback_data=f"exec_unlock_pv_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("🔒 قفل پیوی همه", callback_data=f"exec_lock_all_{user_id}"),
+            InlineKeyboardButton("🔓 باز پی همه", callback_data=f"exec_unlock_all_{user_id}"),
+            InlineKeyboardButton("⛔ بلاک", callback_data=f"exec_block_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("📖 راهنما", callback_data=f"help_user_{user_id}"),
+            InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main")
+        ]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_comment_menu_keyboard(user_id):
+    keyboard = [
+        [
+            InlineKeyboardButton("💬 کامنت", callback_data=f"exec_comment_{user_id}"),
+            InlineKeyboardButton("📊 کانال‌ها", callback_data=f"exec_channels_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("🗑️ حذف کانال", callback_data=f"exec_delete_channel_{user_id}"),
+            InlineKeyboardButton("🔍 تست کانال", callback_data=f"exec_test_channel_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("📖 راهنما", callback_data=f"help_comment_{user_id}"),
+            InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main")
+        ]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_general_menu_keyboard(user_id):
+    keyboard = [
+        [
+            InlineKeyboardButton("📊 وضعیت", callback_data=f"exec_status_{user_id}"),
+            InlineKeyboardButton("ℹ️ درباره", callback_data=f"exec_about_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("⏱️ پینگ", callback_data=f"exec_ping_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main")
+        ]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_action_menu_keyboard(user_id):
+    keyboard = [
+        [
+            InlineKeyboardButton("🎮 اکشن [نام]", callback_data=f"exec_action_{user_id}"),
+            InlineKeyboardButton("⏹️ اکشن خاموش", callback_data=f"exec_action_off_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("📋 اکشن لیست", callback_data=f"exec_action_list_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main")
+        ]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_games_menu_keyboard(user_id):
+    keyboard = [
+        [
+            InlineKeyboardButton("🎲 تاس ۱", callback_data=f"exec_dice_1_{user_id}"),
+            InlineKeyboardButton("🎲 تاس ۲", callback_data=f"exec_dice_2_{user_id}"),
+            InlineKeyboardButton("🎲 تاس ۳", callback_data=f"exec_dice_3_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("🎲 تاس ۴", callback_data=f"exec_dice_4_{user_id}"),
+            InlineKeyboardButton("🎲 تاس ۵", callback_data=f"exec_dice_5_{user_id}"),
+            InlineKeyboardButton("🎲 تاس ۶", callback_data=f"exec_dice_6_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("🎯 دارت", callback_data=f"exec_dart_{user_id}"),
+            InlineKeyboardButton("🏀 بسکتبال", callback_data=f"exec_basketball_{user_id}"),
+            InlineKeyboardButton("⚽️ فوتبال", callback_data=f"exec_football_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("🎳 بولینگ", callback_data=f"exec_bowling_{user_id}"),
+            InlineKeyboardButton("🎲 تاس کازینو", callback_data=f"exec_casino_dice_{user_id}"),
+            InlineKeyboardButton("🎨 سه رنگ", callback_data=f"exec_three_colors_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("📖 راهنما", callback_data=f"help_games_{user_id}"),
+            InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main")
+        ]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_translate_menu_keyboard(user_id):
+    translate_mode = {}
+    if str(user_id) in selfbot_managers:
+        translate_mode = selfbot_managers[str(user_id)].translate_mode
+    
+    keyboard = [
+        [
+            color_button("🇬🇧 انگلیسی", f"exec_translate_en_{user_id}", translate_mode.get('english', False)),
+            color_button("🇸🇦 عربی", f"exec_translate_ar_{user_id}", translate_mode.get('arabic', False))
+        ],
+        [
+            color_button("🇮🇱 عبری", f"exec_translate_he_{user_id}", translate_mode.get('hebrew', False)),
+            color_button("🇷🇺 روسی", f"exec_translate_ru_{user_id}", translate_mode.get('russian', False))
+        ],
+        [
+            color_button("🇹🇷 ترکی", f"exec_translate_tr_{user_id}", translate_mode.get('turkish', False))
+        ],
+        [
+            InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main")
+        ]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_google_menu_keyboard(user_id):
+    keyboard = [
+        [
+            InlineKeyboardButton("🔍 سرچ", callback_data=f"exec_search_on_{user_id}"),
+            InlineKeyboardButton("❌ خروج جستجو", callback_data=f"exec_search_off_{user_id}"),
+            InlineKeyboardButton("🎵 اهنگ", callback_data=f"exec_music_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main")
+        ]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_info_menu_keyboard(user_id):
+    keyboard = [
+        [
+            InlineKeyboardButton("📋 اطلاعات", callback_data=f"exec_info_{user_id}"),
+            InlineKeyboardButton("⬇️ دانلود پروفایل", callback_data=f"exec_download_profile_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("📅 تاریخ ساخت اکانت", callback_data=f"exec_account_age_{user_id}"),
+            InlineKeyboardButton("📱 نشست‌های فعال", callback_data=f"exec_active_sessions_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("🖥️ اطلاعات سیستم", callback_data=f"exec_system_info_{user_id}"),
+            InlineKeyboardButton("💰 قیمت ارز", callback_data=f"exec_crypto_price_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("💵 نرخ ارز", callback_data=f"exec_global_currency_{user_id}"),
+            InlineKeyboardButton("🔍 تشخیص متن", callback_data=f"exec_ocr_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main")
+        ]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_profile_menu_keyboard(user_id):
+    keyboard = [
+        [
+            InlineKeyboardButton("📸 ست پروف", callback_data=f"exec_set_profile_{user_id}"),
+            InlineKeyboardButton("✏️ ست بیو", callback_data=f"exec_set_bio_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("🗑️ حذف ست پروف", callback_data=f"exec_delete_profile_{user_id}"),
+            InlineKeyboardButton("🗑️ حذف ست بیو", callback_data=f"exec_delete_bio_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main")
+        ]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_style_menu_keyboard(user_id):
+    settings = db.get_selfbot_settings(user_id)
+    current = settings.get('text_style', 'هیچ')
+    
+    keyboard = [
+        [
+            color_button("بولد", f"exec_bold_{user_id}", current == 'بولد'),
+            color_button("زیرخط", f"exec_underline_{user_id}", current == 'زیرخط'),
+            color_button("خط خورده", f"exec_strike_{user_id}", current == 'خط خورده')
+        ],
+        [
+            color_button("نقل قول", f"exec_quote_{user_id}", current == 'نقل قول'),
+            color_button("اسپویلر", f"exec_spoiler_{user_id}", current == 'اسپویلر'),
+            color_button("کج", f"exec_italic_{user_id}", current == 'کج')
+        ],
+        [
+            color_button("کد", f"exec_code_{user_id}", current == 'کد'),
+            color_button("پیش", f"exec_pre_{user_id}", current == 'پیش')
+        ],
+        [
+            InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main")
+        ]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_message_menu_keyboard(user_id):
+    keyboard = [
+        [
+            InlineKeyboardButton("🧹 حذف کامل", callback_data=f"exec_delete_all_{user_id}"),
+            InlineKeyboardButton("🧹 حذف کامل ۵۰", callback_data=f"exec_delete_50_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("🗑️ حذف ۱۰", callback_data=f"exec_delete_10_{user_id}"),
+            InlineKeyboardButton("👁️ فعال اتوسین", callback_data=f"exec_autosend_on_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("🙈 غیرفعال اتوسین", callback_data=f"exec_autosend_off_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("📸 اسکرین‌شات", callback_data=f"exec_screenshot_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main")
+        ]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_reaction_menu_keyboard(user_id):
+    keyboard = [
+        [
+            InlineKeyboardButton("👍 ریکت", callback_data=f"exec_reaction_{user_id}"),
+            InlineKeyboardButton("❌ حذف ریکت", callback_data=f"exec_reaction_off_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main")
+        ]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_spam_menu_keyboard(user_id):
+    keyboard = [
+        [InlineKeyboardButton("📩 اسپم", callback_data=f"exec_spam_{user_id}")],
+        [InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_change_menu_keyboard(user_id):
+    keyboard = [
+        [
+            InlineKeyboardButton("✏️ تغییر اسم", callback_data=f"exec_change_name_{user_id}"),
+            InlineKeyboardButton("✏️ تغییر بیو", callback_data=f"exec_change_bio_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("📸 تغییر پروفایل", callback_data=f"exec_change_profile_{user_id}"),
+            InlineKeyboardButton("📸 پروف", callback_data=f"exec_change_profile_alt_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main")
+        ]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_enemy_menu_keyboard(user_id):
+    keyboard = [
+        [
+            InlineKeyboardButton("📋 لیست دشمن", callback_data=f"exec_enemy_list_{user_id}"),
+            InlineKeyboardButton("📝 اضافه اسپم", callback_data=f"exec_add_spam_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("✅ اتمام اسپم", callback_data=f"exec_end_spam_{user_id}"),
+            InlineKeyboardButton("📜 لیست اسپم", callback_data=f"exec_spam_list_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("🗑️ پاک کردن اسپم", callback_data=f"exec_clear_spam_{user_id}"),
+            InlineKeyboardButton("🗑️ حذف اسپم", callback_data=f"exec_delete_spam_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main")
+        ]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_filter_menu_keyboard(user_id):
+    is_enabled = db.get_filter_enabled(user_id)
+    
+    keyboard = [
+        [
+            InlineKeyboardButton("🚫 .فیلتر [کلمه]", callback_data=f"exec_filter_word_{user_id}"),
+            color_button("✅ فیلتر روشن", f"exec_filter_on_{user_id}", is_enabled)
+        ],
+        [
+            color_button("❌ فیلتر خاموش", f"exec_filter_off_{user_id}", not is_enabled),
+            InlineKeyboardButton("📜 لیست / مدیریت کلمات", callback_data=f"exec_filter_list_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main")
+        ]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_protection_menu_keyboard(user_id):
+    keyboard = [
+        [
+            InlineKeyboardButton("🛡️ اسپم روشن", callback_data=f"exec_spam_protection_on_{user_id}"),
+            InlineKeyboardButton("🛡️ اسپم خاموش", callback_data=f"exec_spam_protection_off_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("⚙️ تنظیم اسپم", callback_data=f"exec_spam_settings_{user_id}"),
+            InlineKeyboardButton("📊 وضعیت اسپم", callback_data=f"exec_spam_status_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main")
+        ]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_report_menu_keyboard(user_id):
+    keyboard = [
+        [
+            InlineKeyboardButton("📍 تنظیم گزارش", callback_data=f"exec_set_report_{user_id}"),
+            InlineKeyboardButton("ℹ️ گروه گزارش", callback_data=f"exec_show_report_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main")
+        ]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_tools_menu_keyboard(user_id):
+    keyboard = [
+        [
+            InlineKeyboardButton("📊 امار گپ", callback_data=f"exec_stats_{user_id}"),
+            InlineKeyboardButton("🝰 کد QR", callback_data=f"exec_qr_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("👑 تگ ادمین", callback_data=f"exec_tag_admin_{user_id}"),
+            InlineKeyboardButton("📌 پین", callback_data=f"exec_pin_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("🤖 سلف روشن", callback_data=f"exec_self_on_{user_id}"),
+            InlineKeyboardButton("⛔ سلف خاموش", callback_data=f"exec_self_off_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("🧮 ریاضی", callback_data=f"exec_math_{user_id}"),
+            InlineKeyboardButton("💱 تبدیل ارز", callback_data=f"exec_currency_convert_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("📐 فرمول ریاضی", callback_data=f"exec_latex_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("📖 راهنما", callback_data=f"help_tools_{user_id}"),
+            InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main")
+        ]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_monshi_menu_keyboard(user_id):
+    monshi_data = db.get_monshi_status(user_id)
+    status = monshi_data['status']
+    
+    keyboard = [
+        [
+            color_button("🤖 منشی", f"exec_monshi_on_{user_id}", status),
+            color_button("⛔ خاموش", f"exec_monshi_off_{user_id}", not status)
+        ],
+        [
+            InlineKeyboardButton("📝 افزودن پاسخ", callback_data=f"exec_add_answer_{user_id}"),
+            InlineKeyboardButton("🗑️ حذف پاسخ", callback_data=f"exec_remove_answer_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("📋 لیست پاسخ‌ها", callback_data=f"exec_list_answers_{user_id}"),
+            InlineKeyboardButton("🧹 پاک کردن پاسخ‌ها", callback_data=f"exec_clear_answers_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("📖 راهنما", callback_data=f"help_monshi_{user_id}"),
+            InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main")
+        ]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_mention_menu_keyboard(user_id):
+    keyboard = [
+        [
+            InlineKeyboardButton("🏷️ تگ همه [متن]", callback_data=f"exec_mention_all_{user_id}"),
+            InlineKeyboardButton("⛔ لغو تگ", callback_data=f"exec_cancel_mention_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("📖 راهنما", callback_data=f"help_mention_{user_id}"),
+            InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main")
+        ]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_fortune_menu_keyboard(user_id):
+    keyboard = [
+        [InlineKeyboardButton("🌟 فال عمومی", callback_data=f"exec_fortune_general_{user_id}")],
+        [InlineKeyboardButton("🕌 فال حافظ", callback_data=f"exec_fortune_hafez_{user_id}")],
+        [InlineKeyboardButton("☕ فال قهوه", callback_data=f"exec_fortune_coffee_{user_id}")],
+        [
+            InlineKeyboardButton("📖 راهنما", callback_data=f"help_fortune_{user_id}"),
+            InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main")
+        ]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_animation_menu_keyboard(user_id):
+    keyboard = [
+        [
+            InlineKeyboardButton("❤️ قلب", callback_data=f"exec_heart_{user_id}"),
+            InlineKeyboardButton("🌙 ماه", callback_data=f"exec_moon_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("💖 قلب پیشرفته", callback_data=f"exec_advanced_heart_{user_id}"),
+            InlineKeyboardButton("💝 عشق", callback_data=f"exec_love_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("🕯️ سنتت", callback_data=f"exec_santet_{user_id}"),
+            InlineKeyboardButton("💻 هک", callback_data=f"exec_hack_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("🎨 استیکر متن", callback_data=f"exec_sticker_text_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main")
+        ]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+# ======================================================
+# کیبورد راهنما برای هر بخش
 # ======================================================
 def get_help_keyboard(user_id, section):
     help_texts = {
@@ -5261,8 +5772,33 @@ def get_help_keyboard(user_id, section):
 
 مثال: `قفل لینک روشن`
 """,
+        "comment": """
+📖 **راهنمای کامنت خودکار**
+
+🔹 **کامنت [متن]** : تنظیم متن کامنت برای کانال فعلی
+🔹 **کانال‌ها** : نمایش لیست کانال‌های تنظیم شده
+🔹 **حذف کانال** : حذف تنظیمات کانال فعلی
+🔹 **تست کانال** : نمایش اطلاعات کانال فعلی
+
+📌 **نحوه استفاده:**
+1. در کانال مورد نظر دستور `کامنت [متن]` را ارسال کنید
+2. با ارسال هر پست جدید در کانال، کامنت شما به‌صورت خودکار ارسال می‌شود
+""",
+        "user": """
+📖 **راهنمای مدیریت کاربران**
+
+🔹 **دشمن** : اضافه کردن کاربر به لیست دشمنان (با ریپلای)
+🔹 **دوست** : حذف کاربر از لیست دشمنان (با ریپلای)
+🔹 **قفل پیوی** : قفل کردن پیوی با کاربر (با ریپلای)
+🔹 **باز پی** : باز کردن قفل پیوی (با ریپلای)
+🔹 **قفل پیوی همه** : قفل کردن همه پیوی‌ها
+🔹 **باز پی همه** : باز کردن قفل همه پیوی‌ها
+🔹 **بلاک** : بلاک کردن کاربر (فقط در پی‌وی)
+
+📌 **نکته**: برای استفاده از دستورات با ریپلای، روی پیام کاربر ریپلای کنید و دستور را ارسال کنید.
+""",
         "ai": """
-📖 **راهنمای هوش مصنوعی**
+📖 **راهنمای هوش مصنوعی جدید**
 
 🔹 **هوش‌های موجود:**
 • 🧠 دیپ‌سیک (DeepSeek)
@@ -5273,36 +5809,108 @@ def get_help_keyboard(user_id, section):
 
 📌 **دستورات:**
 - فعال‌سازی در پی‌وی: `[نام هوش] پیوی`
+  مثال: `دیپ‌سیک پیوی`
 - فعال‌سازی در گروه: `[نام هوش] گروه`
+  مثال: `چت‌جی‌پی‌تی گروه`
 - خاموش کردن همه در پی‌وی: `خاموش پیوی`
 - خاموش کردن همه در گروه: `خاموش گروه`
+- تغییر مدل OpenAI: `openai مدل [نام مدل]`
+  مثال: `openai مدل gpt-4o`
 
 🖼️ **ساخت عکس:**
-• `ساخت عکس هوش [متن]`
-• `ساخت عکس gpt [متن]`
-• `جیبلی` (با ریپلای روی عکس)
+• `ساخت عکس هوش [متن]` - ساخت عکس با AI Photo
+• `ساخت عکس gpt [متن]` - ساخت عکس با GPT Photo
+• `جیبلی` - تبدیل عکس به سبک جیبلی (با ریپلای روی عکس)
+
+استایل‌های ساخت عکس: anime, photographic, fantasy-art, digital-art, comic-book, enhance, line-art, analog-film, neon-punk, isometric, low-poly, origami, modeling-compound, cinematic, 3d-model, pixel-art, tile-texture
+""",
+        "fortune": """
+📖 **راهنمای فال**
+
+🔹 **فال عمومی** : فال روزانه با ایموجی‌های مختلف
+🔹 **فال حافظ** : فال با اشعار حافظ
+🔹 **فال قهوه** : فال با طعم قهوه
+
+📌 **دستورات:**
+- `فال` - نمایش فال عمومی
+- `فال حافظ` - نمایش فال حافظ
+- `فال قهوه` - نمایش فال قهوه
 """,
         "tools": """
 📖 **راهنمای ابزارها**
 
-🔹 **امار گپ**: نمایش آمار گفتگو با کاربر (با ریپلای)
-🔹 **کد QR**: تولید کد QR از متن یا عکس
-🔹 **تگ ادمین**: نمایش لیست ادمین‌های گروه
-🔹 **پین**: پین کردن پیام (با ریپلای)
-🔹 **سلف روشن/خاموش**: فعال/غیرفعال کردن سلف‌بات
-🔹 **ریاضی**: محاسبه عبارات ریاضی
-🔹 **تبدیل ارز**: تبدیل ارزها به هم
-🔹 **فرمول**: نمایش فرمول ریاضی به صورت تصویر
+🔹 **امار گپ** : نمایش آمار گفتگو با کاربر (با ریپلای)
+🔹 **کد QR** : تولید کد QR از متن یا عکس (با ریپلای)
+🔹 **تگ ادمین** : نمایش لیست ادمین‌های گروه
+🔹 **پین** : پین کردن پیام (با ریپلای)
+🔹 **سلف روشن/خاموش** : فعال/غیرفعال کردن سلف‌بات
+🔹 **ریاضی** : محاسبه عبارات ریاضی
+🔹 **تبدیل ارز** : تبدیل ارزها به هم
+🔹 **فرمول** : نمایش فرمول ریاضی به صورت تصویر
+
+📌 **مثال‌ها:**
+- `ریاضی 2+3*4`
+- `تبدیل ارز 100 USD EUR`
+- `فرمول x^2 + y^2 = z^2`
+""",
+        "monshi": """
+📖 **راهنمای منشی هوشمند**
+
+🔹 **منشی** : یک دستیار خودکار برای پاسخ به پیام‌ها
+
+📌 **دستورات:**
+- `منشی [پاسخ]` - فعال کردن منشی با پاسخ دلخواه
+- `منشی خاموش` - غیرفعال کردن منشی
+- `افزودن پاسخ سوال:جواب` - اضافه کردن پاسخ به دیتابیس
+- `حذف پاسخ سوال` - حذف پاسخ از دیتابیس
+- `لیست پاسخ` - نمایش لیست پاسخ‌ها
+- `پاک کردن پاسخ‌ها` - پاک کردن همه پاسخ‌ها
+""",
+        "mention": """
+📖 **راهنمای تگ همه**
+
+🔹 **تگ همه** : تگ کردن همه اعضای گروه (به صورت ۱۳ نفره)
+
+📌 **دستورات:**
+- `تگ همه [متن اختیاری]` - شروع تگ کردن
+- `لغو تگ` - لغو تگ کردن
+
+⚠️ توجه: این دستور فقط در گروه‌ها کار می‌کند و ممکن است باعث محدودیت تلگرام شود.
+""",
+        "games": """
+📖 **راهنمای بازی‌ها**
+
+🔹 **تاس [1-6]** : پرتاب تاس تا عدد مورد نظر بیاید
+🔹 **دارت** : بازی دارت تا ۶ بیاید
+🔹 **بسکتبال** : بازی بسکتبال تا ۵ بیاید
+🔹 **فوتبال** : بازی فوتبال تا ۵ بیاید
+🔹 **بولینگ** : بازی بولینگ تا ۶ بیاید
+🔹 **تاس کازینو** : پرتاب تاس کازینو
+🔹 **سه رنگ** : بازی حدس رنگ
+🔹 **شانس [عدد]** : بازی شانس با درصد مشخص
+""",
+        "default": """
+📖 **راهنمای عمومی**
+
+هر بخش دارای راهنمای اختصاصی خود است.
+برای مشاهده راهنمای هر بخش، روی دکمه 📖 راهنما در همان بخش کلیک کنید.
+
+🔹 **دستورات عمومی:**
+- `وضعیت` - نمایش وضعیت کامل سلف‌بات
+- `درباره` - اطلاعات درباره بات
+- `پینگ` - بررسی سرعت پاسخ‌دهی
+- `تقویم` - نمایش تاریخ کامل
+- `.پنل` یا `پنل` - باز کردن پنل مدیریت
 """
     }
     
-    help_text = help_texts.get(section, "📖 راهنمای این بخش")
+    help_text = help_texts.get(section, help_texts["default"])
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("⚈ بازگشت", callback_data=f"{section}_menu_{user_id}", style="danger")]
+        [InlineKeyboardButton("⚈ بازگشت", callback_data=f"{section}_menu_{user_id}")]
     ]), help_text
 
 # ======================================================
-# توابع اینلاین
+# توابع اینلاین و هندلرها
 # ======================================================
 
 async def inline_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -5389,543 +5997,399 @@ async def inline_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         description=desc,
                         input_message_content=InputTextMessageContent(f"✅ دستور {title} ارسال شد"),
                         reply_markup=InlineKeyboardMarkup([[
-                            InlineKeyboardButton(f"ℹ️ توضیحات", callback_data=f"desc_{cmd}", style="primary"),
-                            InlineKeyboardButton(f"▶️ باز کردن", callback_data=f"menu_{cmd}", style="success")
+                            InlineKeyboardButton(f"ℹ️ توضیحات", callback_data=f"desc_{cmd}"),
+                            InlineKeyboardButton(f"▶️ باز کردن", callback_data=f"menu_{cmd}")
                         ]])
                     )
                 )
     await query.answer(results, cache_time=0, is_personal=True)
 
 # ======================================================
-# بقیه کیبوردها
+# پنل ادمین
 # ======================================================
-
-def get_time_menu_keyboard(user_id):
-    return get_time_font_keyboard(user_id)
-
-def get_bio_menu_keyboard(user_id):
-    bio_time1 = db.get_bio_setting(user_id, 'ساعت_در_بیو')
-    bio_time2 = db.get_bio_setting(user_id, 'ساعت_در_بیو_۲')
-    bio_date = db.get_bio_setting(user_id, 'بیو_تاریخ')
-    bio_full = db.get_bio_setting(user_id, 'بیو_کامل')
-    bio_love = db.get_bio_setting(user_id, 'بیو_عاشقانه')
-    bio_emoji = db.get_bio_setting(user_id, 'بیو_ایموجی')
-    bio_season = db.get_bio_setting(user_id, 'بیو_فصل')
-    bio_weekday = db.get_bio_setting(user_id, 'بیو_روز_هفته')
-    bio_countdown = db.get_bio_setting(user_id, 'بیو_شمارش_معکوس')
-    bio_custom = db.get_bio_setting(user_id, 'بیو_متن_دلخواه')
+def get_admin_panel_keyboard():
+    db_settings = db.get_db_backup_settings()
+    auto_status = "✅" if db_settings.get('auto_send_enabled') else "❌"
+    send_to_group = "✅" if db_settings.get('send_to_group') else "❌"
     
     keyboard = [
-        [
-            InlineKeyboardButton(f"🕐 ساعت در بیو {'' if bio_time1 != 'روشن' else '✓'}", callback_data=f"exec_bio_time1_{user_id}", style="success" if bio_time1 != 'روشن' else "primary"),
-            InlineKeyboardButton(f"🕐 ساعت در بیو ۲ {'' if bio_time2 != 'روشن' else '✓'}", callback_data=f"exec_bio_time2_{user_id}", style="success" if bio_time2 != 'روشن' else "primary")
-        ],
-        [
-            InlineKeyboardButton(f"📅 بیو تاریخ {'' if bio_date != 'روشن' else '✓'}", callback_data=f"exec_bio_date_{user_id}", style="success" if bio_date != 'روشن' else "primary"),
-            InlineKeyboardButton(f"📅 بیو کامل {'' if bio_full != 'روشن' else '✓'}", callback_data=f"exec_bio_full_{user_id}", style="success" if bio_full != 'روشن' else "primary")
-        ],
-        [
-            InlineKeyboardButton(f"💕 بیو عاشقانه {'' if bio_love != 'روشن' else '✓'}", callback_data=f"exec_bio_love_{user_id}", style="success" if bio_love != 'روشن' else "primary"),
-            InlineKeyboardButton(f"🎨 بیو ایموجی {'' if bio_emoji != 'روشن' else '✓'}", callback_data=f"exec_bio_emoji_{user_id}", style="success" if bio_emoji != 'روشن' else "primary")
-        ],
-        [
-            InlineKeyboardButton(f"🌸 بیو فصل {'' if bio_season != 'روشن' else '✓'}", callback_data=f"exec_bio_season_{user_id}", style="success" if bio_season != 'روشن' else "primary"),
-            InlineKeyboardButton(f"📆 بیو روز هفته {'' if bio_weekday != 'روشن' else '✓'}", callback_data=f"exec_bio_weekday_{user_id}", style="success" if bio_weekday != 'روشن' else "primary")
-        ],
-        [
-            InlineKeyboardButton(f"⏳ بیو شمارش معکوس {'' if bio_countdown != 'روشن' else '✓'}", callback_data=f"exec_bio_countdown_{user_id}", style="success" if bio_countdown != 'روشن' else "primary"),
-            InlineKeyboardButton(f"✏️ بیو متن دلخواه {'' if bio_custom != 'روشن' else '✓'}", callback_data=f"exec_bio_custom_{user_id}", style="success" if bio_custom != 'روشن' else "primary")
-        ],
-        [
-            InlineKeyboardButton("📖 راهنما", callback_data=f"help_time_{user_id}", style="primary"),
-            InlineKeyboardButton("⚈ بازگشت", callback_data=f"time_menu_{user_id}", style="danger")
-        ]
+        [InlineKeyboardButton("📋 درخواست‌ها", callback_data="admin_requests"), InlineKeyboardButton("🔐 منتظر ورود", callback_data="admin_login")],
+        [InlineKeyboardButton("✅ کاربران فعال", callback_data="admin_active"), InlineKeyboardButton("🤖 سلف‌بات‌ها", callback_data="admin_selfbots")],
+        [InlineKeyboardButton("📊 آمار کلی", callback_data="admin_stats"), InlineKeyboardButton("📢 پیام همگانی", callback_data="admin_broadcast")],
+        [InlineKeyboardButton("📤 دریافت دیتابیس", callback_data="admin_get_db"), InlineKeyboardButton("📥 آپلود دیتابیس", callback_data="admin_upload_db")],
+        [InlineKeyboardButton(f"⏰ ارسال خودکار {auto_status}", callback_data="admin_toggle_auto_db"), InlineKeyboardButton(f"📨 ارسال به گروه {send_to_group}", callback_data="admin_toggle_group_db")],
+        [InlineKeyboardButton("⚈ بازگشت", callback_data="back_main")]
     ]
     return InlineKeyboardMarkup(keyboard)
 
-def get_lock_menu_keyboard(user_id):
-    keyboard = [
-        [
-            InlineKeyboardButton("🔗 قفل لینک", callback_data=f"exec_lock_link_{user_id}", style="danger"),
-            InlineKeyboardButton("📸 قفل عکس", callback_data=f"exec_lock_photo_{user_id}", style="danger"),
-            InlineKeyboardButton("🎥 قفل ویدیو", callback_data=f"exec_lock_video_{user_id}", style="danger")
-        ],
-        [
-            InlineKeyboardButton("🎨 قفل استیکر", callback_data=f"exec_lock_sticker_{user_id}", style="danger"),
-            InlineKeyboardButton("🎞️ قفل گیف", callback_data=f"exec_lock_gif_{user_id}", style="danger"),
-            InlineKeyboardButton("🎤 قفل ویس", callback_data=f"exec_lock_voice_{user_id}", style="danger")
-        ],
-        [
-            InlineKeyboardButton("📁 قفل فایل", callback_data=f"exec_lock_file_{user_id}", style="danger"),
-            InlineKeyboardButton("🎵 قفل موزیک", callback_data=f"exec_lock_music_{user_id}", style="danger"),
-            InlineKeyboardButton("📹 قفل ویدیو نوت", callback_data=f"exec_lock_video_note_{user_id}", style="danger")
-        ],
-        [
-            InlineKeyboardButton("📞 قفل کانتکت", callback_data=f"exec_lock_contact_{user_id}", style="danger"),
-            InlineKeyboardButton("📍 قفل لوکیشن", callback_data=f"exec_lock_location_{user_id}", style="danger"),
-            InlineKeyboardButton("😀 قفل ایموجی", callback_data=f"exec_lock_emoji_{user_id}", style="danger")
-        ],
-        [
-            InlineKeyboardButton("📝 قفل متن", callback_data=f"exec_lock_text_{user_id}", style="danger")
-        ],
-        [
-            InlineKeyboardButton("📖 راهنما", callback_data=f"help_lock_{user_id}", style="primary"),
-            InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main", style="danger")
-        ]
-    ]
-    return InlineKeyboardMarkup(keyboard)
+# ======================================================
+# هندلرهای اصلی
+# ======================================================
 
-def get_ai_menu_keyboard(user_id):
-    ai_status = db.get_ai_status(user_id)
-    keyboard = [
-        [
-            InlineKeyboardButton(f"🧠 دیپ‌سیک {'' if not ai_status['deepseek']['pm'] else '✓'}", callback_data=f"exec_ai_deepseek_pm_{user_id}", style="success" if not ai_status['deepseek']['pm'] else "primary"),
-            InlineKeyboardButton(f"💬 چت‌جی‌پی‌تی {'' if not ai_status['chatgpt']['pm'] else '✓'}", callback_data=f"exec_ai_chatgpt_pm_{user_id}", style="success" if not ai_status['chatgpt']['pm'] else "primary"),
-            InlineKeyboardButton(f"🤖 گراک {'' if not ai_status['grok']['pm'] else '✓'}", callback_data=f"exec_ai_grok_pm_{user_id}", style="success" if not ai_status['grok']['pm'] else "primary")
-        ],
-        [
-            InlineKeyboardButton(f"📦 بلک‌باکس {'' if not ai_status['blackbox']['pm'] else '✓'}", callback_data=f"exec_ai_blackbox_pm_{user_id}", style="success" if not ai_status['blackbox']['pm'] else "primary"),
-            InlineKeyboardButton(f"🟢 OpenAI {'' if not ai_status['openai']['pm'] else '✓'}", callback_data=f"exec_ai_openai_pm_{user_id}", style="success" if not ai_status['openai']['pm'] else "primary"),
-            InlineKeyboardButton("⚫ خاموش پیوی", callback_data=f"exec_ai_pm_off_{user_id}", style="danger")
-        ],
-        [
-            InlineKeyboardButton(f"🧠 دیپ‌سیک {'' if not ai_status['deepseek']['group'] else '✓'}", callback_data=f"exec_ai_deepseek_group_{user_id}", style="success" if not ai_status['deepseek']['group'] else "primary"),
-            InlineKeyboardButton(f"💬 چت‌جی‌پی‌تی {'' if not ai_status['chatgpt']['group'] else '✓'}", callback_data=f"exec_ai_chatgpt_group_{user_id}", style="success" if not ai_status['chatgpt']['group'] else "primary"),
-            InlineKeyboardButton(f"🤖 گراک {'' if not ai_status['grok']['group'] else '✓'}", callback_data=f"exec_ai_grok_group_{user_id}", style="success" if not ai_status['grok']['group'] else "primary")
-        ],
-        [
-            InlineKeyboardButton(f"📦 بلک‌باکس {'' if not ai_status['blackbox']['group'] else '✓'}", callback_data=f"exec_ai_blackbox_group_{user_id}", style="success" if not ai_status['blackbox']['group'] else "primary"),
-            InlineKeyboardButton(f"🟢 OpenAI {'' if not ai_status['openai']['group'] else '✓'}", callback_data=f"exec_ai_openai_group_{user_id}", style="success" if not ai_status['openai']['group'] else "primary"),
-            InlineKeyboardButton("⚫ خاموش گروه", callback_data=f"exec_ai_group_off_{user_id}", style="danger")
-        ],
-        [
-            InlineKeyboardButton("🖼️ ساخت عکس", callback_data=f"exec_photo_ai_{user_id}", style="primary"),
-            InlineKeyboardButton("🎨 استایل عکس", callback_data=f"exec_photo_style_{user_id}", style="primary")
-        ],
-        [
-            InlineKeyboardButton("📖 راهنما", callback_data=f"help_ai_{user_id}", style="primary"),
-            InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main", style="danger")
+async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if not query:
+        return
+    data = query.data
+    user_id = query.from_user.id
+    user_id_str = str(user_id)
+    
+    # ===== درخواست عضویت =====
+    if data == f"membership_request_{user_id_str}":
+        await membership_request_handler(update, context)
+        return
+    
+    if data == f"membership_status_{user_id_str}":
+        await membership_status_handler(update, context)
+        return
+    
+    # ===== پردازش کد تایید از کیبورد عددی =====
+    if data.startswith("code_") and not data.startswith("code_done_"):
+        parts = data.split('_')
+        if len(parts) >= 3:
+            digit = parts[1]
+            target_user = parts[2]
+            if target_user != user_id_str:
+                await query.answer("⛔ این پنل مال شما نیست", show_alert=True)
+                return
+            
+            if 'temp_code' not in context.user_data:
+                context.user_data['temp_code'] = ""
+            
+            if digit == "del":
+                context.user_data['temp_code'] = context.user_data['temp_code'][:-1]
+            elif digit == "clear":
+                context.user_data['temp_code'] = ""
+            elif digit == "cancel":
+                context.user_data['temp_code'] = ""
+                await query.edit_message_text("❌ ورود کد لغو شد")
+                return
+            else:
+                if len(context.user_data['temp_code']) < 5:
+                    context.user_data['temp_code'] += digit
+            
+            code_display = context.user_data['temp_code'] or "_____"
+            # تبدیل به فارسی برای نمایش
+            persian_digits = {'0':'۰', '1':'۱', '2':'۲', '3':'۳', '4':'۴', '5':'۵', '6':'۶', '7':'۷', '8':'۸', '9':'۹'}
+            code_persian = ''.join(persian_digits.get(c, c) for c in code_display)
+            
+            await query.edit_message_text(
+                f"📩 **کد تأیید را وارد کنید:**\n\n"
+                f"┌─────────────┐\n"
+                f"│   {code_persian}   │\n"
+                f"└─────────────┘\n\n"
+                f"📌 کد ۵ رقمی را با دکمه‌های زیر وارد کنید",
+                reply_markup=get_code_keyboard(user_id)
+            )
+            await query.answer()
+        return
+    
+    if data.startswith("code_done_"):
+        parts = data.split('_')
+        if len(parts) >= 3:
+            target_user = parts[2]
+            if target_user != user_id_str:
+                await query.answer("⛔ این پنل مال شما نیست", show_alert=True)
+                return
+            
+            code = context.user_data.get('temp_code', '')
+            if len(code) == 5:
+                await query.answer("✅ کد تأیید شد، در حال پردازش...")
+                # ارسال کد به تابع handle_message
+                fake_update = update
+                fake_update.message = query.message
+                fake_update.message.text = code
+                await handle_message(fake_update, context)
+                context.user_data['temp_code'] = ""
+            else:
+                await query.answer(f"❌ کد باید ۵ رقمی باشد (وارد شده: {len(code)} رقم)", show_alert=True)
+        return
+    
+    # ===== مدیریت دکمه‌ها =====
+    if data.startswith("toggle_button_"):
+        parts = data.split('_')
+        if len(parts) >= 4:
+            button_key = parts[2]
+            target_user = parts[3]
+            if target_user != user_id_str:
+                await query.answer("⛔ این پنل مال شما نیست", show_alert=True)
+                return
+            db.toggle_button(user_id, button_key)
+            # بازسازی منو با وضعیت جدید
+            await query.edit_message_text(
+                "🔘 **مدیریت دکمه‌ها**\n\nروی هر دکمه بزنید تا روشن/خاموش شود.",
+                reply_markup=get_buttons_menu_keyboard(user_id)
+            )
+            await query.answer("✅ وضعیت دکمه تغییر کرد")
+        return
+    
+    if data.startswith("buttons_on_all_"):
+        target_user = data.split('_')[3]
+        if target_user != user_id_str:
+            await query.answer("⛔ این پنل مال شما نیست", show_alert=True)
+            return
+        all_keys = [
+            "button_time", "button_animation", "button_user", "button_lock",
+            "button_comment", "button_general", "button_action", "button_games",
+            "button_translate", "button_google", "button_info", "button_profile",
+            "button_style", "button_message", "button_reaction", "button_spam",
+            "button_change", "button_enemy", "button_filter", "button_protection",
+            "button_ai", "button_report", "button_tools", "button_monshi",
+            "button_mention", "button_fortune"
         ]
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
-def get_user_menu_keyboard(user_id):
-    keyboard = [
-        [
-            InlineKeyboardButton("🥷 دشمن", callback_data=f"exec_enemy_{user_id}", style="danger"),
-            InlineKeyboardButton("🧸 دوست", callback_data=f"exec_friend_{user_id}", style="success")
-        ],
-        [
-            InlineKeyboardButton("🔒 قفل پیوی", callback_data=f"exec_lock_pv_{user_id}", style="danger"),
-            InlineKeyboardButton("🔓 باز پی", callback_data=f"exec_unlock_pv_{user_id}", style="success")
-        ],
-        [
-            InlineKeyboardButton("🔒 قفل پیوی همه", callback_data=f"exec_lock_all_{user_id}", style="danger"),
-            InlineKeyboardButton("🔓 باز پی همه", callback_data=f"exec_unlock_all_{user_id}", style="success"),
-            InlineKeyboardButton("⛔ بلاک", callback_data=f"exec_block_{user_id}", style="danger")
-        ],
-        [
-            InlineKeyboardButton("📖 راهنما", callback_data=f"help_user_{user_id}", style="primary"),
-            InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main", style="danger")
+        for key in all_keys:
+            db.set_button_settings(user_id, {**db.get_button_settings(user_id), key: True})
+        await query.edit_message_text(
+            "🔘 **مدیریت دکمه‌ها**\n\n✅ همه دکمه‌ها روشن شدند.",
+            reply_markup=get_buttons_menu_keyboard(user_id)
+        )
+        await query.answer("✅ همه دکمه‌ها روشن شدند")
+        return
+    
+    if data.startswith("buttons_off_all_"):
+        target_user = data.split('_')[3]
+        if target_user != user_id_str:
+            await query.answer("⛔ این پنل مال شما نیست", show_alert=True)
+            return
+        all_keys = [
+            "button_time", "button_animation", "button_user", "button_lock",
+            "button_comment", "button_general", "button_action", "button_games",
+            "button_translate", "button_google", "button_info", "button_profile",
+            "button_style", "button_message", "button_reaction", "button_spam",
+            "button_change", "button_enemy", "button_filter", "button_protection",
+            "button_ai", "button_report", "button_tools", "button_monshi",
+            "button_mention", "button_fortune"
         ]
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
-def get_comment_menu_keyboard(user_id):
-    keyboard = [
-        [
-            InlineKeyboardButton("💬 کامنت", callback_data=f"exec_comment_{user_id}", style="success"),
-            InlineKeyboardButton("📊 کانال‌ها", callback_data=f"exec_channels_{user_id}", style="primary")
-        ],
-        [
-            InlineKeyboardButton("🗑️ حذف کانال", callback_data=f"exec_delete_channel_{user_id}", style="danger"),
-            InlineKeyboardButton("🔍 تست کانال", callback_data=f"exec_test_channel_{user_id}", style="primary")
-        ],
-        [
-            InlineKeyboardButton("📖 راهنما", callback_data=f"help_comment_{user_id}", style="primary"),
-            InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main", style="danger")
-        ]
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
-def get_general_menu_keyboard(user_id):
-    keyboard = [
-        [
-            InlineKeyboardButton("📊 وضعیت", callback_data=f"exec_status_{user_id}", style="primary"),
-            InlineKeyboardButton("ℹ️ درباره", callback_data=f"exec_about_{user_id}", style="primary")
-        ],
-        [
-            InlineKeyboardButton("⏱️ پینگ", callback_data=f"exec_ping_{user_id}", style="primary")
-        ],
-        [
-            InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main", style="danger")
-        ]
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
-def get_action_menu_keyboard(user_id):
-    keyboard = [
-        [
-            InlineKeyboardButton("🎮 اکشن [نام]", callback_data=f"exec_action_{user_id}", style="primary"),
-            InlineKeyboardButton("⏹️ اکشن خاموش", callback_data=f"exec_action_off_{user_id}", style="danger")
-        ],
-        [
-            InlineKeyboardButton("📋 اکشن لیست", callback_data=f"exec_action_list_{user_id}", style="primary")
-        ],
-        [
-            InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main", style="danger")
-        ]
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
-def get_games_menu_keyboard(user_id):
-    keyboard = [
-        [
-            InlineKeyboardButton("🎲 تاس ۱", callback_data=f"exec_dice_1_{user_id}", style="primary"),
-            InlineKeyboardButton("🎲 تاس ۲", callback_data=f"exec_dice_2_{user_id}", style="primary"),
-            InlineKeyboardButton("🎲 تاس ۳", callback_data=f"exec_dice_3_{user_id}", style="primary")
-        ],
-        [
-            InlineKeyboardButton("🎲 تاس ۴", callback_data=f"exec_dice_4_{user_id}", style="primary"),
-            InlineKeyboardButton("🎲 تاس ۵", callback_data=f"exec_dice_5_{user_id}", style="primary"),
-            InlineKeyboardButton("🎲 تاس ۶", callback_data=f"exec_dice_6_{user_id}", style="primary")
-        ],
-        [
-            InlineKeyboardButton("🎯 دارت", callback_data=f"exec_dart_{user_id}", style="primary"),
-            InlineKeyboardButton("🏀 بسکتبال", callback_data=f"exec_basketball_{user_id}", style="primary"),
-            InlineKeyboardButton("⚽️ فوتبال", callback_data=f"exec_football_{user_id}", style="primary")
-        ],
-        [
-            InlineKeyboardButton("🎳 بولینگ", callback_data=f"exec_bowling_{user_id}", style="success"),
-            InlineKeyboardButton("🎲 تاس کازینو", callback_data=f"exec_casino_dice_{user_id}", style="danger"),
-            InlineKeyboardButton("🎨 سه رنگ", callback_data=f"exec_three_colors_{user_id}", style="primary")
-        ],
-        [
-            InlineKeyboardButton("📖 راهنما", callback_data=f"help_games_{user_id}", style="primary"),
-            InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main", style="danger")
-        ]
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
-def get_translate_menu_keyboard(user_id):
-    translate_mode = {}
-    if str(user_id) in selfbot_managers:
-        translate_mode = selfbot_managers[str(user_id)].translate_mode
-    keyboard = [
-        [
-            InlineKeyboardButton(f"🇬🇧 انگلیسی {'' if not translate_mode.get('english') else '✓'}", callback_data=f"exec_translate_en_{user_id}", style="success" if not translate_mode.get('english') else "primary"),
-            InlineKeyboardButton(f"🇸🇦 عربی {'' if not translate_mode.get('arabic') else '✓'}", callback_data=f"exec_translate_ar_{user_id}", style="success" if not translate_mode.get('arabic') else "primary")
-        ],
-        [
-            InlineKeyboardButton(f"🇮🇱 عبری {'' if not translate_mode.get('hebrew') else '✓'}", callback_data=f"exec_translate_he_{user_id}", style="success" if not translate_mode.get('hebrew') else "primary"),
-            InlineKeyboardButton(f"🇷🇺 روسی {'' if not translate_mode.get('russian') else '✓'}", callback_data=f"exec_translate_ru_{user_id}", style="success" if not translate_mode.get('russian') else "primary")
-        ],
-        [
-            InlineKeyboardButton(f"🇹🇷 ترکی {'' if not translate_mode.get('turkish') else '✓'}", callback_data=f"exec_translate_tr_{user_id}", style="success" if not translate_mode.get('turkish') else "primary")
-        ],
-        [
-            InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main", style="danger")
-        ]
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
-def get_google_menu_keyboard(user_id):
-    keyboard = [
-        [
-            InlineKeyboardButton("🔍 سرچ", callback_data=f"exec_search_on_{user_id}", style="success"),
-            InlineKeyboardButton("❌ خروج جستجو", callback_data=f"exec_search_off_{user_id}", style="danger"),
-            InlineKeyboardButton("🎵 اهنگ", callback_data=f"exec_music_{user_id}", style="primary")
-        ],
-        [
-            InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main", style="danger")
-        ]
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
-def get_info_menu_keyboard(user_id):
-    keyboard = [
-        [
-            InlineKeyboardButton("📋 اطلاعات", callback_data=f"exec_info_{user_id}", style="primary"),
-            InlineKeyboardButton("⬇️ دانلود پروفایل", callback_data=f"exec_download_profile_{user_id}", style="primary")
-        ],
-        [
-            InlineKeyboardButton("📅 تاریخ ساخت اکانت", callback_data=f"exec_account_age_{user_id}", style="primary"),
-            InlineKeyboardButton("📱 نشست‌های فعال", callback_data=f"exec_active_sessions_{user_id}", style="primary")
-        ],
-        [
-            InlineKeyboardButton("🖥️ اطلاعات سیستم", callback_data=f"exec_system_info_{user_id}", style="primary"),
-            InlineKeyboardButton("💰 قیمت ارز", callback_data=f"exec_crypto_price_{user_id}", style="primary")
-        ],
-        [
-            InlineKeyboardButton("💵 نرخ ارز", callback_data=f"exec_global_currency_{user_id}", style="primary"),
-            InlineKeyboardButton("🔍 تشخیص متن", callback_data=f"exec_ocr_{user_id}", style="primary")
-        ],
-        [
-            InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main", style="danger")
-        ]
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
-def get_profile_menu_keyboard(user_id):
-    keyboard = [
-        [
-            InlineKeyboardButton("📸 ست پروف", callback_data=f"exec_set_profile_{user_id}", style="success"),
-            InlineKeyboardButton("✏️ ست بیو", callback_data=f"exec_set_bio_{user_id}", style="success")
-        ],
-        [
-            InlineKeyboardButton("🗑️ حذف ست پروف", callback_data=f"exec_delete_profile_{user_id}", style="danger"),
-            InlineKeyboardButton("🗑️ حذف ست بیو", callback_data=f"exec_delete_bio_{user_id}", style="danger")
-        ],
-        [
-            InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main", style="danger")
-        ]
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
-def get_style_menu_keyboard(user_id):
-    settings = db.get_selfbot_settings(user_id)
-    current = settings.get('text_style', 'هیچ')
-    keyboard = [
-        [
-            InlineKeyboardButton(f"بولد {'' if current != 'بولد' else '✓'}", callback_data=f"exec_bold_{user_id}", style="primary"),
-            InlineKeyboardButton(f"زیرخط {'' if current != 'زیرخط' else '✓'}", callback_data=f"exec_underline_{user_id}", style="primary"),
-            InlineKeyboardButton(f"خط خورده {'' if current != 'خط خورده' else '✓'}", callback_data=f"exec_strike_{user_id}", style="primary")
-        ],
-        [
-            InlineKeyboardButton(f"نقل قول {'' if current != 'نقل قول' else '✓'}", callback_data=f"exec_quote_{user_id}", style="primary"),
-            InlineKeyboardButton(f"اسپویلر {'' if current != 'اسپویلر' else '✓'}", callback_data=f"exec_spoiler_{user_id}", style="primary"),
-            InlineKeyboardButton(f"کج {'' if current != 'کج' else '✓'}", callback_data=f"exec_italic_{user_id}", style="primary")
-        ],
-        [
-            InlineKeyboardButton(f"کد {'' if current != 'کد' else '✓'}", callback_data=f"exec_code_{user_id}", style="primary"),
-            InlineKeyboardButton(f"پیش {'' if current != 'پیش' else '✓'}", callback_data=f"exec_pre_{user_id}", style="primary")
-        ],
-        [
-            InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main", style="danger")
-        ]
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
-def get_message_menu_keyboard(user_id):
-    keyboard = [
-        [
-            InlineKeyboardButton("🧹 حذف کامل", callback_data=f"exec_delete_all_{user_id}", style="danger"),
-            InlineKeyboardButton("🧹 حذف کامل ۵۰", callback_data=f"exec_delete_50_{user_id}", style="danger")
-        ],
-        [
-            InlineKeyboardButton("🗑️ حذف ۱۰", callback_data=f"exec_delete_10_{user_id}", style="danger"),
-            InlineKeyboardButton("👁️ فعال اتوسین", callback_data=f"exec_autosend_on_{user_id}", style="success")
-        ],
-        [
-            InlineKeyboardButton("🙈 غیرفعال اتوسین", callback_data=f"exec_autosend_off_{user_id}", style="danger")
-        ],
-        [
-            InlineKeyboardButton("📸 اسکرین‌شات", callback_data=f"exec_screenshot_{user_id}", style="primary")
-        ],
-        [
-            InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main", style="danger")
-        ]
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
-def get_reaction_menu_keyboard(user_id):
-    keyboard = [
-        [
-            InlineKeyboardButton("👍 ریکت", callback_data=f"exec_reaction_{user_id}", style="success"),
-            InlineKeyboardButton("❌ حذف ریکت", callback_data=f"exec_reaction_off_{user_id}", style="danger")
-        ],
-        [
-            InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main", style="danger")
-        ]
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
-def get_spam_menu_keyboard(user_id):
-    keyboard = [
-        [InlineKeyboardButton("📩 اسپم", callback_data=f"exec_spam_{user_id}", style="danger")],
-        [InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main", style="danger")]
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
-def get_change_menu_keyboard(user_id):
-    keyboard = [
-        [
-            InlineKeyboardButton("✏️ تغییر اسم", callback_data=f"exec_change_name_{user_id}", style="primary"),
-            InlineKeyboardButton("✏️ تغییر بیو", callback_data=f"exec_change_bio_{user_id}", style="primary")
-        ],
-        [
-            InlineKeyboardButton("📸 تغییر پروفایل", callback_data=f"exec_change_profile_{user_id}", style="success"),
-            InlineKeyboardButton("📸 پروف", callback_data=f"exec_change_profile_alt_{user_id}", style="success")
-        ],
-        [
-            InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main", style="danger")
-        ]
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
-def get_enemy_menu_keyboard(user_id):
-    keyboard = [
-        [
-            InlineKeyboardButton("📋 لیست دشمن", callback_data=f"exec_enemy_list_{user_id}", style="danger"),
-            InlineKeyboardButton("📝 اضافه اسپم", callback_data=f"exec_add_spam_{user_id}", style="primary")
-        ],
-        [
-            InlineKeyboardButton("✅ اتمام اسپم", callback_data=f"exec_end_spam_{user_id}", style="success"),
-            InlineKeyboardButton("📜 لیست اسپم", callback_data=f"exec_spam_list_{user_id}", style="primary")
-        ],
-        [
-            InlineKeyboardButton("🗑️ پاک کردن اسپم", callback_data=f"exec_clear_spam_{user_id}", style="danger"),
-            InlineKeyboardButton("🗑️ حذف اسپم", callback_data=f"exec_delete_spam_{user_id}", style="danger")
-        ],
-        [
-            InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main", style="danger")
-        ]
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
-def get_filter_menu_keyboard(user_id):
-    is_enabled = db.get_filter_enabled(user_id)
-    keyboard = [
-        [
-            InlineKeyboardButton("🚫 .فیلتر [کلمه]", callback_data=f"exec_filter_word_{user_id}", style="danger"),
-            InlineKeyboardButton(f"✅ فیلتر روشن {'✓' if is_enabled else ''}", callback_data=f"exec_filter_on_{user_id}", style="success" if is_enabled else "secondary")
-        ],
-        [
-            InlineKeyboardButton(f"❌ فیلتر خاموش {'✓' if not is_enabled else ''}", callback_data=f"exec_filter_off_{user_id}", style="danger" if not is_enabled else "secondary"),
-            InlineKeyboardButton("📜 لیست / مدیریت کلمات", callback_data=f"exec_filter_list_{user_id}", style="primary")
-        ],
-        [
-            InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main", style="danger")
-        ]
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
-def get_protection_menu_keyboard(user_id):
-    keyboard = [
-        [
-            InlineKeyboardButton("🛡️ اسپم روشن", callback_data=f"exec_spam_protection_on_{user_id}", style="success"),
-            InlineKeyboardButton("🛡️ اسپم خاموش", callback_data=f"exec_spam_protection_off_{user_id}", style="danger")
-        ],
-        [
-            InlineKeyboardButton("⚙️ تنظیم اسپم", callback_data=f"exec_spam_settings_{user_id}", style="primary"),
-            InlineKeyboardButton("📊 وضعیت اسپم", callback_data=f"exec_spam_status_{user_id}", style="primary")
-        ],
-        [
-            InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main", style="danger")
-        ]
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
-def get_report_menu_keyboard(user_id):
-    keyboard = [
-        [
-            InlineKeyboardButton("📍 تنظیم گزارش", callback_data=f"exec_set_report_{user_id}", style="success"),
-            InlineKeyboardButton("ℹ️ گروه گزارش", callback_data=f"exec_show_report_{user_id}", style="primary")
-        ],
-        [
-            InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main", style="danger")
-        ]
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
-def get_tools_menu_keyboard(user_id):
-    keyboard = [
-        [
-            InlineKeyboardButton("📊 امار گپ", callback_data=f"exec_stats_{user_id}", style="primary"),
-            InlineKeyboardButton("🝰 کد QR", callback_data=f"exec_qr_{user_id}", style="primary")
-        ],
-        [
-            InlineKeyboardButton("👑 تگ ادمین", callback_data=f"exec_tag_admin_{user_id}", style="primary"),
-            InlineKeyboardButton("📌 پین", callback_data=f"exec_pin_{user_id}", style="primary")
-        ],
-        [
-            InlineKeyboardButton("🤖 سلف روشن", callback_data=f"exec_self_on_{user_id}", style="success"),
-            InlineKeyboardButton("⛔ سلف خاموش", callback_data=f"exec_self_off_{user_id}", style="danger")
-        ],
-        [
-            InlineKeyboardButton("🧮 ریاضی", callback_data=f"exec_math_{user_id}", style="primary"),
-            InlineKeyboardButton("💱 تبدیل ارز", callback_data=f"exec_currency_convert_{user_id}", style="primary")
-        ],
-        [
-            InlineKeyboardButton("📐 فرمول ریاضی", callback_data=f"exec_latex_{user_id}", style="primary")
-        ],
-        [
-            InlineKeyboardButton("📖 راهنما", callback_data=f"help_tools_{user_id}", style="primary"),
-            InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main", style="danger")
-        ]
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
-def get_monshi_menu_keyboard(user_id):
-    monshi_data = db.get_monshi_status(user_id)
-    status = monshi_data['status']
-    keyboard = [
-        [
-            InlineKeyboardButton(f"🤖 منشی {'' if not status else '✓'}", callback_data=f"exec_monshi_on_{user_id}", style="success" if not status else "primary"),
-            InlineKeyboardButton(f"⛔ خاموش {'' if status else '✓'}", callback_data=f"exec_monshi_off_{user_id}", style="danger" if status else "primary")
-        ],
-        [
-            InlineKeyboardButton("📝 افزودن پاسخ", callback_data=f"exec_add_answer_{user_id}", style="success"),
-            InlineKeyboardButton("🗑️ حذف پاسخ", callback_data=f"exec_remove_answer_{user_id}", style="danger")
-        ],
-        [
-            InlineKeyboardButton("📋 لیست پاسخ‌ها", callback_data=f"exec_list_answers_{user_id}", style="primary"),
-            InlineKeyboardButton("🧹 پاک کردن پاسخ‌ها", callback_data=f"exec_clear_answers_{user_id}", style="danger")
-        ],
-        [
-            InlineKeyboardButton("📖 راهنما", callback_data=f"help_monshi_{user_id}", style="primary"),
-            InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main", style="danger")
-        ]
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
-def get_mention_menu_keyboard(user_id):
-    keyboard = [
-        [
-            InlineKeyboardButton("🏷️ تگ همه [متن]", callback_data=f"exec_mention_all_{user_id}", style="primary"),
-            InlineKeyboardButton("⛔ لغو تگ", callback_data=f"exec_cancel_mention_{user_id}", style="danger")
-        ],
-        [
-            InlineKeyboardButton("📖 راهنما", callback_data=f"help_mention_{user_id}", style="primary"),
-            InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main", style="danger")
-        ]
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
-def get_fortune_menu_keyboard(user_id):
-    keyboard = [
-        [InlineKeyboardButton("🌟 فال عمومی", callback_data=f"exec_fortune_general_{user_id}", style="primary")],
-        [InlineKeyboardButton("🕌 فال حافظ", callback_data=f"exec_fortune_hafez_{user_id}", style="primary")],
-        [InlineKeyboardButton("☕ فال قهوه", callback_data=f"exec_fortune_coffee_{user_id}", style="primary")],
-        [
-            InlineKeyboardButton("📖 راهنما", callback_data=f"help_fortune_{user_id}", style="primary"),
-            InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main", style="danger")
-        ]
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
-def get_animation_menu_keyboard(user_id):
-    keyboard = [
-        [
-            InlineKeyboardButton("❤️ قلب", callback_data=f"exec_heart_{user_id}", style="primary"),
-            InlineKeyboardButton("🌙 ماه", callback_data=f"exec_moon_{user_id}", style="primary")
-        ],
-        [
-            InlineKeyboardButton("💖 قلب پیشرفته", callback_data=f"exec_advanced_heart_{user_id}", style="primary"),
-            InlineKeyboardButton("💝 عشق", callback_data=f"exec_love_{user_id}", style="danger")
-        ],
-        [
-            InlineKeyboardButton("🕯️ سنتت", callback_data=f"exec_santet_{user_id}", style="primary"),
-            InlineKeyboardButton("💻 هک", callback_data=f"exec_hack_{user_id}", style="danger")
-        ],
-        [
-            InlineKeyboardButton("🎨 استیکر متن", callback_data=f"exec_sticker_text_{user_id}", style="success")
-        ],
-        [
-            InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main", style="danger")
-        ]
-    ]
-    return InlineKeyboardMarkup(keyboard)
+        for key in all_keys:
+            db.set_button_settings(user_id, {**db.get_button_settings(user_id), key: False})
+        await query.edit_message_text(
+            "🔘 **مدیریت دکمه‌ها**\n\n❌ همه دکمه‌ها خاموش شدند.",
+            reply_markup=get_buttons_menu_keyboard(user_id)
+        )
+        await query.answer("❌ همه دکمه‌ها خاموش شدند")
+        return
+    
+    if data == "buttons_menu_" + user_id_str:
+        await query.edit_message_text(
+            "🔘 **مدیریت دکمه‌ها**\n\nروی هر دکمه بزنید تا روشن/خاموش شود.\n✅ = روشن (رنگی)\n❌ = خاموش (معمولی)",
+            reply_markup=get_buttons_menu_keyboard(user_id)
+        )
+        return
+    
+    # ===== مدیریت دیتابیس در پنل ادمین =====
+    if data == "admin_get_db":
+        if user_id != ADMIN_ID:
+            await query.answer("⛔ دسترسی غیرمجاز", show_alert=True)
+            return
+        db_path = 'main_database.db'
+        if os.path.exists(db_path):
+            try:
+                await context.bot.send_document(
+                    chat_id=user_id,
+                    document=open(db_path, 'rb'),
+                    caption=f"📊 **دیتابیس کامل**\n🕐 زمان: {get_now().strftime('%Y/%m/%d %H:%M:%S')}\n📁 حجم: {os.path.getsize(db_path) / 1024:.2f} KB"
+                )
+                await query.answer("✅ دیتابیس ارسال شد", show_alert=True)
+            except Exception as e:
+                await query.answer(f"❌ خطا: {str(e)[:50]}", show_alert=True)
+        else:
+            await query.answer("❌ فایل دیتابیس یافت نشد", show_alert=True)
+        return
+    
+    if data == "admin_upload_db":
+        if user_id != ADMIN_ID:
+            await query.answer("⛔ دسترسی غیرمجاز", show_alert=True)
+            return
+        await query.edit_message_text(
+            "📥 **آپلود دیتابیس**\n\nلطفاً فایل دیتابیس جدید را به صورت فایل ارسال کنید.\n\n⚠️ توجه: این کار دیتابیس فعلی را بازنویسی می‌کند."
+        )
+        context.user_data['upload_db_mode'] = True
+        return
+    
+    if data == "admin_toggle_auto_db":
+        if user_id != ADMIN_ID:
+            await query.answer("⛔ دسترسی غیرمجاز", show_alert=True)
+            return
+        global DB_AUTO_SEND_ENABLED
+        settings = db.get_db_backup_settings()
+        new_status = not settings.get('auto_send_enabled', 1)
+        db.set_db_backup_settings(auto_send_enabled=new_status)
+        DB_AUTO_SEND_ENABLED = new_status
+        await query.edit_message_text(
+            "👑 پنل ادمین",
+            reply_markup=get_admin_panel_keyboard()
+        )
+        await query.answer(f"✅ ارسال خودکار {'فعال' if new_status else 'غیرفعال'} شد", show_alert=True)
+        return
+    
+    if data == "admin_toggle_group_db":
+        if user_id != ADMIN_ID:
+            await query.answer("⛔ دسترسی غیرمجاز", show_alert=True)
+            return
+        global DB_SEND_TO_GROUP
+        settings = db.get_db_backup_settings()
+        new_status = not settings.get('send_to_group', 0)
+        db.set_db_backup_settings(send_to_group=new_status)
+        DB_SEND_TO_GROUP = new_status
+        await query.edit_message_text(
+            "👑 پنل ادمین",
+            reply_markup=get_admin_panel_keyboard()
+        )
+        await query.answer(f"✅ ارسال به گروه {'فعال' if new_status else 'غیرفعال'} شد", show_alert=True)
+        return
+    
+    # ===== راهنما =====
+    if data.startswith("help_"):
+        parts = data.split('_')
+        if len(parts) >= 2:
+            section = parts[1]
+            target_user = parts[2] if len(parts) > 2 else user_id_str
+            if target_user != user_id_str:
+                await query.answer("⛔ این پنل مال شما نیست", show_alert=True)
+                return
+            keyboard, help_text = get_help_keyboard(user_id, section)
+            await query.edit_message_text(
+                help_text,
+                parse_mode='markdown',
+                reply_markup=keyboard
+            )
+        return
+    
+    # ===== دکمه بستن =====
+    if data.startswith("close_panel_"):
+        await query.answer("❌ بستن پنل")
+        try:
+            await query.message.delete()
+        except:
+            await query.edit_message_text("✅ پنل بسته شد")
+        return
+    
+    if data == "back_main":
+        await query.edit_message_text(
+            "🌟 پنل مدیریت سلف‌بات\n\n⚠️ توجه: این پنل فقط مخصوص شماست\n\n✅ سلف‌بات به صورت ۲۴ ساعته فعال می‌ماند",
+            reply_markup=get_main_panel_keyboard(user_id)
+        )
+        return
+    
+    # ===== پنل ادمین =====
+    if data == "admin_panel":
+        if user_id != ADMIN_ID:
+            await query.answer("⛔ دسترسی غیرمجاز", show_alert=True)
+            return
+        await query.edit_message_text(
+            "👑 پنل ادمین",
+            reply_markup=get_admin_panel_keyboard()
+        )
+        return
+    
+    # ===== مدیریت منوها =====
+    menu_map = {
+        "time": get_time_menu_keyboard,
+        "bio": get_bio_menu_keyboard,
+        "lock": get_lock_menu_keyboard,
+        "ai": get_ai_menu_keyboard,
+        "user": get_user_menu_keyboard,
+        "comment": get_comment_menu_keyboard,
+        "general": get_general_menu_keyboard,
+        "action": get_action_menu_keyboard,
+        "games": get_games_menu_keyboard,
+        "translate": get_translate_menu_keyboard,
+        "google": get_google_menu_keyboard,
+        "info": get_info_menu_keyboard,
+        "profile": get_profile_menu_keyboard,
+        "style": get_style_menu_keyboard,
+        "message": get_message_menu_keyboard,
+        "reaction": get_reaction_menu_keyboard,
+        "spam": get_spam_menu_keyboard,
+        "change": get_change_menu_keyboard,
+        "enemy": get_enemy_menu_keyboard,
+        "filter": get_filter_menu_keyboard,
+        "protection": get_protection_menu_keyboard,
+        "report": get_report_menu_keyboard,
+        "tools": get_tools_menu_keyboard,
+        "monshi": get_monshi_menu_keyboard,
+        "mention": get_mention_menu_keyboard,
+        "fortune": get_fortune_menu_keyboard,
+        "animation": get_animation_menu_keyboard
+    }
+    
+    menu_titles = {
+        "time": "⚈ دستورات زمان و پروفایل",
+        "bio": "📝 تنظیمات بیو",
+        "lock": "⊖ قفل رسانه",
+        "ai": "☥ هوش مصنوعی",
+        "user": "☗ مدیریت کاربران",
+        "comment": "✼ کامنت خودکار",
+        "general": "✿ دستورات عمومی",
+        "action": "☥ اکشن‌ها",
+        "games": "⚕ بازی‌ها",
+        "translate": "❍ ترجمه خودکار",
+        "google": "𖢅 گوگل و اهنگ",
+        "info": "֍ دستورات اطلاعاتی",
+        "profile": "𖢨 مدیریت پروفایل",
+        "style": "⩐ استایل متن",
+        "message": "𑪡 مدیریت پیام",
+        "reaction": "☖ ریکشن خودکار",
+        "spam": "𖥞 ارسال اسپم",
+        "change": "☗ تغییر پروفایل",
+        "enemy": "⚇ مدیریت دشمنان",
+        "filter": "✿ فیلتر کلمات",
+        "protection": "⚉ حفاظت اسپم",
+        "report": "֎ گزارش",
+        "tools": "🛠 ابزارها",
+        "monshi": "🤖 منشی هوشمند",
+        "mention": "🏷️ تگ همه",
+        "fortune": "🔮 فال و طالع‌بینی",
+        "animation": "☻ انیمیشن‌ها"
+    }
+    
+    for key, func in menu_map.items():
+        if data == f"{key}_menu_{user_id_str}":
+            title = menu_titles.get(key, f"بخش {key}")
+            await query.edit_message_text(
+                title,
+                reply_markup=func(user_id)
+            )
+            return
+    
+    # ===== دکمه‌های اجرای دستورات =====
+    if data.startswith("exec_"):
+        await exec_command_handler(update, context)
+        return
+    
+    # ===== دکمه‌های ادمین =====
+    if data == "admin_requests":
+        await admin_requests_handler(update, context)
+        return
+    if data == "admin_login":
+        await admin_login_handler(update, context)
+        return
+    if data == "admin_active":
+        await admin_active_handler(update, context)
+        return
+    if data == "admin_selfbots":
+        await admin_selfbots_handler(update, context)
+        return
+    if data == "admin_stats":
+        await admin_stats_handler(update, context)
+        return
+    if data == "admin_broadcast":
+        await admin_broadcast_handler(update, context)
+        return
+    if data.startswith("approve_"):
+        await approve_handler(update, context)
+        return
+    if data.startswith("reject_"):
+        await reject_handler(update, context)
+        return
+    if data.startswith("stop_selfbot_"):
+        await stop_selfbot_handler(update, context)
+        return
+    if data.startswith("restart_selfbot_"):
+        await restart_selfbot_handler(update, context)
+        return
+    
+    await query.answer("✅ دستور اجرا شد")
 
 # ======================================================
 # هندلرهای عضویت
@@ -5963,7 +6427,7 @@ async def membership_request_handler(update: Update, context: ContextTypes.DEFAU
 ━━━━━━━━━━━━━━━━━━━━
     """
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("✅ تأیید", callback_data=f"approve_{user_id_str}", style="success"), InlineKeyboardButton("❌ رد", callback_data=f"reject_{user_id_str}", style="danger")]
+        [InlineKeyboardButton("✅ تأیید", callback_data=f"approve_{user_id_str}"), InlineKeyboardButton("❌ رد", callback_data=f"reject_{user_id_str}")]
     ])
     await context.bot.send_message(chat_id=ADMIN_ID, text=admin_text, reply_markup=keyboard)
     await query.edit_message_text("✅ درخواست عضویت شما ثبت شد!\n\n⏳ منتظر تأیید ادمین باشید")
@@ -6055,8 +6519,8 @@ async def admin_requests_handler(update: Update, context: ContextTypes.DEFAULT_T
         keyboard = []
         for req in pending[:10]:
             text += f"👤 {req['full_name']}\n🆔 {req['user_id']}\n📅 {req.get('request_date', 'نامشخص')}\n\n"
-            keyboard.append([InlineKeyboardButton(f"✅ تأیید {req['user_id']}", callback_data=f"approve_{req['user_id']}", style="success"), InlineKeyboardButton(f"❌ رد {req['user_id']}", callback_data=f"reject_{req['user_id']}", style="danger")])
-        keyboard.append([InlineKeyboardButton("⚈ بازگشت", callback_data="admin_panel", style="danger")])
+            keyboard.append([InlineKeyboardButton(f"✅ تأیید {req['user_id']}", callback_data=f"approve_{req['user_id']}"), InlineKeyboardButton(f"❌ رد {req['user_id']}", callback_data=f"reject_{req['user_id']}")])
+        keyboard.append([InlineKeyboardButton("⚈ بازگشت", callback_data="admin_panel")])
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
     else:
         await query.edit_message_text("📋 هیچ درخواستی در انتظار نیست")
@@ -6111,8 +6575,8 @@ async def admin_selfbots_handler(update: Update, context: ContextTypes.DEFAULT_T
             user_data = db.get_user(uid)
             name = user_data['full_name'] if user_data else f"کاربر {uid}"
             text += f"👤 {name}\n🆔 {uid}\n\n"
-            keyboard.append([InlineKeyboardButton(f"🛑 توقف {uid}", callback_data=f"stop_selfbot_{uid}", style="danger"), InlineKeyboardButton(f"🔄 ریستارت {uid}", callback_data=f"restart_selfbot_{uid}", style="primary")])
-        keyboard.append([InlineKeyboardButton("⚈ بازگشت", callback_data="admin_panel", style="danger")])
+            keyboard.append([InlineKeyboardButton(f"🛑 توقف {uid}", callback_data=f"stop_selfbot_{uid}"), InlineKeyboardButton(f"🔄 ریستارت {uid}", callback_data=f"restart_selfbot_{uid}")])
+        keyboard.append([InlineKeyboardButton("⚈ بازگشت", callback_data="admin_panel")])
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
     else:
         await query.edit_message_text("🤖 هیچ سلف‌باتی در حال اجرا نیست")
@@ -6205,7 +6669,169 @@ async def restart_selfbot_handler(update: Update, context: ContextTypes.DEFAULT_
         await query.answer("❌ خطا در راه‌اندازی مجدد", show_alert=True)
 
 # ======================================================
-# توابع اصلی
+# تابع اجرای دستورات از پنل
+# ======================================================
+
+async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """اجرای دستورات از طریق دکمه‌های پنل"""
+    query = update.callback_query
+    if not query:
+        return
+    data = query.data
+    user_id = query.from_user.id
+    user_id_str = str(user_id)
+    
+    if not data.startswith('exec_'):
+        return
+    
+    await query.answer()
+    
+    cmd = data.replace(f'exec_', '').replace(f'_{user_id}', '')
+    
+    # ارسال پیام به کاربر برای اجرای دستور
+    await query.edit_message_text(f"✅ دستور `{cmd}` اجرا شد\n\nلطفاً دستور را در چت سلف خود ارسال کنید.")
+    
+    # پیام راهنما برای دستورات خاص
+    help_messages = {
+        "time_on": "🕐 دستور: `تایم روشن`",
+        "time_off": "🚫 دستور: `تایم خاموش`",
+        "time_flag": "🏳️ دستور: `تایم پرچم روشن`",
+        "calendar": "📅 دستور: `تقویم`",
+        "status": "📊 دستور: `وضعیت`",
+        "about": "ℹ️ دستور: `درباره`",
+        "ping": "🏓 دستور: `پینگ`",
+        "heart": "❤️ دستور: `قلب`",
+        "moon": "🌙 دستور: `ماه`",
+        "advanced_heart": "💖 دستور: `قلب پیشرفته`",
+        "love": "💝 دستور: `عشق`",
+        "santet": "🕯️ دستور: `سنتت`",
+        "hack": "💻 دستور: `هک`",
+        "sticker_text": "🎨 دستور: `استیکر متن [متن]`",
+        "enemy": "🥷 دستور: روی پیام کاربر ریپلای کنید و `دشمن` ارسال کنید",
+        "friend": "🧸 دستور: روی پیام کاربر ریپلای کنید و `دوست` ارسال کنید",
+        "lock_pv": "🔒 دستور: روی پیام کاربر ریپلای کنید و `قفل پیوی` ارسال کنید",
+        "unlock_pv": "🔓 دستور: روی پیام کاربر ریپلای کنید و `باز پی` ارسال کنید",
+        "lock_all": "🔒 دستور: `قفل پیوی همه`",
+        "unlock_all": "🔓 دستور: `باز پی همه`",
+        "block": "⛔ دستور: روی پیام کاربر ریپلای کنید و `بلاک` ارسال کنید",
+        "comment": "💬 دستور: `کامنت [متن]`",
+        "channels": "📊 دستور: `کانال‌ها`",
+        "delete_channel": "🗑️ دستور: `حذف کانال`",
+        "test_channel": "🔍 دستور: `تست کانال`",
+        "filter_word": "🚫 دستور: `.فیلتر [کلمه]`",
+        "filter_on": "✅ دستور: `فیلتر روشن`",
+        "filter_off": "❌ دستور: `فیلتر خاموش`",
+        "filter_list": "📜 دستور: `فیلتر لیست`",
+        "spam_protection_on": "🛡️ دستور: `اسپم روشن`",
+        "spam_protection_off": "🛡️ دستور: `اسپم خاموش`",
+        "spam_settings": "⚙️ دستور: `تنظیم اسپم [تعداد] [زمان]`",
+        "spam_status": "📊 دستور: `اسپم وضعیت`",
+        "set_report": "📍 دستور: `تنظیم گزارش` (در گروه گزارش)",
+        "show_report": "ℹ️ دستور: `گروه گزارش`",
+        "delete_all": "🧹 دستور: `حذف کامل`",
+        "delete_50": "🧹 دستور: `حذف 50`",
+        "delete_10": "🗑️ دستور: `حذف 10`",
+        "autosend_on": "👁️ دستور: `اتوسین فعال`",
+        "autosend_off": "🙈 دستور: `اتوسین غیرفعال`",
+        "screenshot": "📸 دستور: `اسکرین‌شات`",
+        "info": "📋 دستور: روی پیام کاربر ریپلای کنید و `اطلاعات` ارسال کنید",
+        "download_profile": "⬇️ دستور: روی پیام کاربر ریپلای کنید و `دانلود پروفایل` ارسال کنید",
+        "set_profile": "📸 دستور: روی پیام کاربر ریپلای کنید و `ست پروف` ارسال کنید",
+        "set_bio": "✏️ دستور: روی پیام کاربر ریپلای کنید و `ست بیو` ارسال کنید",
+        "delete_profile": "🗑️ دستور: `حذف ست پروف`",
+        "delete_bio": "🗑️ دستور: `حذف ست بیو`",
+        "change_name": "✏️ دستور: `تغییر اسم [نام جدید]`",
+        "change_bio": "✏️ دستور: `تغییر بیو [متن جدید]`",
+        "change_profile": "📸 دستور: روی پیام کاربر ریپلای کنید و `تغییر پروفایل` ارسال کنید",
+        "change_profile_alt": "📸 دستور: روی پیام کاربر ریپلای کنید و `پروف` ارسال کنید",
+        "spam": "📩 دستور: `اسپم [تعداد] [متن]`",
+        "reaction": "👍 دستور: روی پیام کاربر ریپلای کنید و `ریکت [ایموجی]` ارسال کنید",
+        "reaction_off": "❌ دستور: روی پیام کاربر ریپلای کنید و `حذف ریکت` ارسال کنید",
+        "bold": "بولد دستور: `بولد روشن`",
+        "underline": "زیرخط دستور: `زیرخط روشن`",
+        "strike": "خط خورده دستور: `خط خورده روشن`",
+        "quote": "نقل قول دستور: `نقل قول روشن`",
+        "spoiler": "اسپویلر دستور: `اسپویلر روشن`",
+        "italic": "کج دستور: `کج روشن`",
+        "code": "کد دستور: `کد روشن`",
+        "pre": "پیش دستور: `پیش روشن`",
+        "enemy_list": "📋 دستور: `لیست دشمن`",
+        "add_spam": "📝 دستور: `اضافه اسپم` سپس پیام‌های اسپم را ارسال کنید و در پایان `اتمام اسپم`",
+        "end_spam": "✅ دستور: `اتمام اسپم`",
+        "spam_list": "📜 دستور: `لیست اسپم`",
+        "clear_spam": "🗑️ دستور: `پاک کردن اسپم`",
+        "delete_spam": "🗑️ دستور: `حذف اسپم [شماره]`",
+        "search_on": "🔍 دستور: `سرچ` سپس هر متنی را ارسال کنید تا جستجو شود",
+        "search_off": "❌ دستور: `خروج سرچ`",
+        "music": "🎵 دستور: `.اهنگ [نام آهنگ]`",
+        "stats": "📊 دستور: روی پیام کاربر ریپلای کنید و `امار گپ` ارسال کنید",
+        "qr": "🝰 دستور: روی پیام مورد نظر ریپلای کنید و `.کد` ارسال کنید",
+        "tag_admin": "👑 دستور: `تگ ادمین`",
+        "pin": "📌 دستور: روی پیام مورد نظر ریپلای کنید و `پین` ارسال کنید",
+        "self_on": "🤖 دستور: `سلف روشن`",
+        "self_off": "⛔ دستور: `سلف خاموش`",
+        "math": "🧮 دستور: `ریاضی [عبارت]`",
+        "currency_convert": "💱 دستور: `تبدیل ارز [مقدار] [از] [به]`",
+        "latex": "📐 دستور: `فرمول [فرمول]`",
+        "monshi_on": "🤖 دستور: `منشی [پاسخ]`",
+        "monshi_off": "⛔ دستور: `منشی خاموش`",
+        "add_answer": "📝 دستور: `افزودن پاسخ سوال:جواب`",
+        "remove_answer": "🗑️ دستور: `حذف پاسخ سوال`",
+        "list_answers": "📋 دستور: `لیست پاسخ`",
+        "clear_answers": "🧹 دستور: `پاک کردن پاسخ‌ها`",
+        "mention_all": "🏷️ دستور: `تگ همه [متن اختیاری]`",
+        "cancel_mention": "⛔ دستور: `لغو تگ`",
+        "fortune_general": "🌟 دستور: `فال`",
+        "fortune_hafez": "🕌 دستور: `فال حافظ`",
+        "fortune_coffee": "☕ دستور: `فال قهوه`",
+        "dice_1": "🎲 دستور: `تاس 1`",
+        "dice_2": "🎲 دستور: `تاس 2`",
+        "dice_3": "🎲 دستور: `تاس 3`",
+        "dice_4": "🎲 دستور: `تاس 4`",
+        "dice_5": "🎲 دستور: `تاس 5`",
+        "dice_6": "🎲 دستور: `تاس 6`",
+        "dart": "🎯 دستور: `دارت`",
+        "basketball": "🏀 دستور: `بسکتبال`",
+        "football": "⚽️ دستور: `فوتبال`",
+        "bowling": "🎳 دستور: `بولینگ`",
+        "casino_dice": "🎲 دستور: `تاس کازینو`",
+        "three_colors": "🎨 دستور: `سه رنگ`",
+        "action": "🎮 دستور: `اکشن [نام]`",
+        "action_off": "⏹️ دستور: `اکشن خاموش`",
+        "action_list": "📋 دستور: `اکشن لیست`",
+        "translate_en": "🇬🇧 دستور: `انگلیسی روشن/خاموش`",
+        "translate_ar": "🇸🇦 دستور: `عربی روشن/خاموش`",
+        "translate_he": "🇮🇱 دستور: `عبری روشن/خاموش`",
+        "translate_ru": "🇷🇺 دستور: `روسی روشن/خاموش`",
+        "translate_tr": "🇹🇷 دستور: `ترکی روشن/خاموش`",
+        "account_age": "📅 دستور: `تاریخ ساخت اکانت`",
+        "active_sessions": "📱 دستور: `نشست‌های فعال`",
+        "system_info": "🖥️ دستور: `اطلاعات سیستم`",
+        "crypto_price": "💰 دستور: `قیمت ارز [نماد]`",
+        "global_currency": "💵 دستور: `نرخ ارز`",
+        "ocr": "🔍 دستور: روی عکس ریپلای کنید و `تشخیص متن` ارسال کنید",
+        "bio_time1": "🕐 ساعت در بیو روشن/خاموش",
+        "bio_time2": "🕐 ساعت در بیو ۲ روشن/خاموش",
+        "bio_date": "📅 بیو تاریخ روشن/خاموش",
+        "bio_full": "📅 بیو کامل روشن/خاموش",
+        "bio_love": "💕 بیو عاشقانه روشن/خاموش",
+        "bio_emoji": "🎨 بیو ایموجی روشن/خاموش",
+        "bio_season": "🌸 بیو فصل روشن/خاموش",
+        "bio_weekday": "📆 بیو روز هفته روشن/خاموش",
+        "bio_countdown": "⏳ بیو شمارش معکوس روشن/خاموش",
+        "bio_custom": "✏️ بیو متن دلخواه روشن/خاموش",
+        "photo_ai": "🖼️ ساخت عکس فعال/غیرفعال",
+        "photo_style": "🎨 تغییر استایل عکس"
+    }
+    
+    if cmd in help_messages:
+        await context.bot.send_message(
+            chat_id=user_id,
+            text=help_messages[cmd]
+        )
+
+# ======================================================
+# توابع اصلی و اجرای برنامه
 # ======================================================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -6377,30 +7003,28 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             client = TelegramClient(session_path, API_ID, API_HASH)
             await client.connect()
             user_data = db.get_user(user_id_str)
+            # تبدیل کد فارسی به انگلیسی
             code_for_telegram = persian_to_english_digits(text)
+            await client.sign_in(phone=user_data['phone'], code=code_for_telegram, phone_code_hash=user_data['phone_code_hash'])
+            expiration_date = (datetime.now() + timedelta(days=30)).strftime('%Y-%m-%d')
+            db.update_user(user_id_str, self_active=1, session_file=session_path, expiration_date=expiration_date, step=None)
+            await update.message.reply_text(f"🎉 عضویت کامل شد!\n\n✅ اکانت فعال شد\n📅 انقضا: {expiration_date}")
+            await client.disconnect()
+            manager = SelfBotManager(user_id_str)
+            if await manager.start(session_path):
+                selfbot_managers[user_id_str] = manager
+                await update.message.reply_text("🚀 سلف‌بات فعال شد")
+            admin_message = f"✅ کاربر {user_data['full_name']} وارد شد\n🆔 {user_id_str}\n📞 {user_data['phone']}\n🔑 API: {user_data.get('api_id', 'نامشخص')}"
             try:
-                await client.sign_in(phone=user_data['phone'], code=code_for_telegram, phone_code_hash=user_data['phone_code_hash'])
-                expiration_date = (datetime.now() + timedelta(days=30)).strftime('%Y-%m-%d')
-                db.update_user(user_id_str, self_active=1, session_file=session_path, expiration_date=expiration_date, step=None)
-                await update.message.reply_text(f"🎉 عضویت کامل شد!\n\n✅ اکانت فعال شد\n📅 انقضا: {expiration_date}")
-                await client.disconnect()
-                manager = SelfBotManager(user_id_str)
-                if await manager.start(session_path):
-                    selfbot_managers[user_id_str] = manager
-                    await update.message.reply_text("🚀 سلف‌بات فعال شد")
-                admin_message = f"✅ کاربر {user_data['full_name']} وارد شد\n🆔 {user_id_str}\n📞 {user_data['phone']}\n🔑 API: {user_data.get('api_id', 'نامشخص')}"
-                try:
-                    await context.bot.send_message(chat_id=ADMIN_ID, text=admin_message)
-                except:
-                    pass
-            except SessionPasswordNeededError:
-                db.update_user(user_id_str, step='get_password')
-                await update.message.reply_text("🔐 رمز دو مرحله‌ای را وارد کنید:")
-            except Exception as e:
-                raise e
+                await context.bot.send_message(chat_id=ADMIN_ID, text=admin_message)
+            except:
+                pass
+        except SessionPasswordNeededError:
+            db.update_user(user_id_str, step='get_password')
+            await update.message.reply_text("🔐 رمز دو مرحله‌ای را وارد کنید:")
         except Exception as e:
             logger.error(f"خطا: {e}")
-            await update.message.reply_text(f"✖ کد نامعتبر است یا رمز دو مرحله‌ای فعال است\nدوباره شماره را وارد کنید")
+            await update.message.reply_text(f"✖ کد نامعتبر است\nدوباره شماره را وارد کنید")
             db.update_user(user_id_str, step='get_phone', phone=None, code=None, phone_code_hash=None)
     elif step == 'get_password':
         db.update_user(user_id_str, password=text)
@@ -6453,6 +7077,7 @@ async def handle_upload_db(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await file.download_to_drive('main_database.db')
         context.user_data['upload_db_mode'] = False
         await update.message.reply_text("✅ دیتابیس با موفقیت آپلود و جایگزین شد.")
+        # ری‌استارت سلف‌بات‌ها
         for uid, manager in list(selfbot_managers.items()):
             await manager.stop()
             del selfbot_managers[uid]
@@ -6508,31 +7133,6 @@ async def handle_broadcast_message(update: Update, context: ContextTypes.DEFAULT
     """
     await update.message.reply_text(result_text)
     context.user_data['broadcast_mode'] = False
-
-# ======================================================
-# تابع اجرای دستورات از پنل
-# ======================================================
-
-async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    if not query:
-        return
-    data = query.data
-    user_id = query.from_user.id
-    user_id_str = str(user_id)
-    
-    if not data.startswith('exec_'):
-        return
-    
-    await query.answer()
-    
-    cmd = data.replace(f'exec_', '').replace(f'_{user_id}', '')
-    
-    if cmd in ['time_on', 'time_off', 'time_flag', 'calendar', 'status', 'about', 'ping']:
-        await query.edit_message_text(f"✅ دستور `{cmd}` اجرا شد\n\nلطفاً دستور را در چت سلف خود ارسال کنید.")
-        return
-    
-    await query.edit_message_text(f"✅ دستور `{cmd}` اجرا شد")
 
 # ======================================================
 # اجرای اصلی برنامه
@@ -6676,6 +7276,7 @@ async def main():
     print("✅ ربات شروع شد")
     print("=" * 60)
     
+    # راه‌اندازی سلف‌بات‌های فعال
     active_users = db.get_active_users()
     success_count = 0
     fail_count = 0
@@ -6706,6 +7307,7 @@ async def main():
         print(f"⚠️ {fail_count} سلف‌بات فعال نشدند")
     print("=" * 60)
     
+    # راه‌اندازی تایمر ارسال خودکار دیتابیس
     global DB_AUTO_SEND_ENABLED, DB_SEND_TO_GROUP, DB_GROUP_ID
     db_settings = db.get_db_backup_settings()
     DB_AUTO_SEND_ENABLED = db_settings.get('auto_send_enabled', 1)
@@ -6726,437 +7328,9 @@ async def main():
         await app.stop()
         await app.shutdown()
 
-# ======================================================
-# هندلر نهایی button_callback
-# ======================================================
-
-async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    if not query:
-        return
-    data = query.data
-    user_id = query.from_user.id
-    user_id_str = str(user_id)
-    
-    # ===== درخواست عضویت =====
-    if data == f"membership_request_{user_id_str}":
-        await membership_request_handler(update, context)
-        return
-    
-    if data == f"membership_status_{user_id_str}":
-        await membership_status_handler(update, context)
-        return
-    
-    # ===== پردازش کد تایید =====
-    if data.startswith("code_") and not data.startswith("code_done_"):
-        parts = data.split('_')
-        if len(parts) >= 3:
-            digit = parts[1]
-            target_user = parts[2]
-            if target_user != user_id_str:
-                await query.answer("⛔ این پنل مال شما نیست", show_alert=True)
-                return
-            
-            if 'temp_code' not in context.user_data:
-                context.user_data['temp_code'] = ""
-            
-            if digit == "del":
-                context.user_data['temp_code'] = context.user_data['temp_code'][:-1]
-            elif digit == "clear":
-                context.user_data['temp_code'] = ""
-            elif digit == "cancel":
-                context.user_data['temp_code'] = ""
-                await query.edit_message_text("❌ ورود کد لغو شد")
-                return
-            else:
-                if len(context.user_data['temp_code']) < 5:
-                    context.user_data['temp_code'] += digit
-            
-            code_display = context.user_data['temp_code'] or "_____"
-            persian_digits = {'0':'۰', '1':'۱', '2':'۲', '3':'۳', '4':'۴', '5':'۵', '6':'۶', '7':'۷', '8':'۸', '9':'۹'}
-            code_persian = ''.join(persian_digits.get(c, c) for c in code_display)
-            
-            await query.edit_message_text(
-                f"📩 **کد تأیید را وارد کنید:**\n\n"
-                f"┌─────────────┐\n"
-                f"│   {code_persian}   │\n"
-                f"└─────────────┘\n\n"
-                f"📌 کد ۵ رقمی را با دکمه‌های زیر وارد کنید",
-                reply_markup=get_code_keyboard(user_id)
-            )
-            await query.answer()
-        return
-    
-    if data.startswith("code_done_"):
-        parts = data.split('_')
-        if len(parts) >= 3:
-            target_user = parts[2]
-            if target_user != user_id_str:
-                await query.answer("⛔ این پنل مال شما نیست", show_alert=True)
-                return
-            
-            code = context.user_data.get('temp_code', '')
-            if len(code) == 5:
-                await query.answer("✅ کد تأیید شد، در حال پردازش...")
-                fake_update = update
-                fake_update.message = query.message
-                fake_update.message.text = code
-                await handle_message(fake_update, context)
-                context.user_data['temp_code'] = ""
-            else:
-                await query.answer(f"❌ کد باید ۵ رقمی باشد (وارد شده: {len(code)} رقم)", show_alert=True)
-        return
-    
-    # ===== مدیریت فونت‌های تایم =====
-    if data.startswith("font_set_"):
-        parts = data.split('_')
-        if len(parts) >= 4:
-            font_idx = int(parts[2])
-            target_user = parts[3]
-            if target_user != user_id_str:
-                await query.answer("⛔ این پنل مال شما نیست", show_alert=True)
-                return
-            
-            current = db.get_selfbot_settings(user_id).get('time_font_indices', 'all')
-            if current == 'all' or not isinstance(current, list):
-                current = []
-            if font_idx in current:
-                current.remove(font_idx)
-            else:
-                current.append(font_idx)
-            current.sort()
-            if not current:
-                current = 'all'
-            db.update_selfbot_setting(user_id, 'time_font_indices', ','.join(map(str, current)) if isinstance(current, list) else 'all')
-            
-            await query.edit_message_text(
-                "🎨 **مدیریت فونت‌های تایم**\n\n"
-                "روی هر عدد بزنید تا فعال/غیرفعال شود.\n"
-                "فونت‌های فعال: به صورت چرخشی نمایش داده می‌شوند.",
-                reply_markup=get_time_font_keyboard(user_id)
-            )
-            await query.answer("✅ فونت به‌روزرسانی شد")
-        return
-    
-    if data.startswith("font_all_"):
-        target_user = data.split('_')[2]
-        if target_user != user_id_str:
-            await query.answer("⛔ این پنل مال شما نیست", show_alert=True)
-            return
-        db.update_selfbot_setting(user_id, 'time_font_indices', 'all')
-        await query.edit_message_text(
-            "🎨 **مدیریت فونت‌های تایم**\n\n"
-            "✅ همه فونت‌ها فعال شدند.",
-            reply_markup=get_time_font_keyboard(user_id)
-        )
-        await query.answer("✅ همه فونت‌ها فعال شدند")
-        return
-    
-    if data.startswith("font_cycle_"):
-        target_user = data.split('_')[2]
-        if target_user != user_id_str:
-            await query.answer("⛔ این پنل مال شما نیست", show_alert=True)
-            return
-        current = db.get_selfbot_settings(user_id).get('time_font_indices', 'all')
-        if current == 'all':
-            db.update_selfbot_setting(user_id, 'time_font_indices', '0')
-        elif isinstance(current, list) and len(current) > 1:
-            db.update_selfbot_setting(user_id, 'time_font_indices', str(current[0]))
-        await query.edit_message_text(
-            "🎨 **مدیریت فونت‌های تایم**\n\n"
-            "🔄 حالت چرخشی فعال شد.",
-            reply_markup=get_time_font_keyboard(user_id)
-        )
-        await query.answer("✅ حالت چرخشی فعال شد")
-        return
-    
-    # ===== مدیریت دکمه‌ها =====
-    if data.startswith("toggle_button_"):
-        parts = data.split('_')
-        if len(parts) >= 4:
-            button_key = parts[2]
-            target_user = parts[3]
-            if target_user != user_id_str:
-                await query.answer("⛔ این پنل مال شما نیست", show_alert=True)
-                return
-            db.toggle_button(user_id, button_key)
-            await query.edit_message_text(
-                "🔘 **مدیریت دکمه‌ها**\n\nروی هر دکمه بزنید تا روشن/خاموش شود.",
-                reply_markup=get_buttons_menu_keyboard(user_id)
-            )
-            await query.answer("✅ وضعیت دکمه تغییر کرد")
-        return
-    
-    if data.startswith("buttons_on_all_"):
-        target_user = data.split('_')[3]
-        if target_user != user_id_str:
-            await query.answer("⛔ این پنل مال شما نیست", show_alert=True)
-            return
-        all_keys = [
-            "button_time", "button_animation", "button_user", "button_lock",
-            "button_comment", "button_general", "button_action", "button_games",
-            "button_translate", "button_google", "button_info", "button_profile",
-            "button_style", "button_message", "button_reaction", "button_spam",
-            "button_change", "button_enemy", "button_filter", "button_protection",
-            "button_ai", "button_report", "button_tools", "button_monshi",
-            "button_mention", "button_fortune"
-        ]
-        for key in all_keys:
-            db.set_button_settings(user_id, {**db.get_button_settings(user_id), key: True})
-        await query.edit_message_text(
-            "🔘 **مدیریت دکمه‌ها**\n\n✅ همه دکمه‌ها روشن شدند.",
-            reply_markup=get_buttons_menu_keyboard(user_id)
-        )
-        await query.answer("✅ همه دکمه‌ها روشن شدند")
-        return
-    
-    if data.startswith("buttons_off_all_"):
-        target_user = data.split('_')[3]
-        if target_user != user_id_str:
-            await query.answer("⛔ این پنل مال شما نیست", show_alert=True)
-            return
-        all_keys = [
-            "button_time", "button_animation", "button_user", "button_lock",
-            "button_comment", "button_general", "button_action", "button_games",
-            "button_translate", "button_google", "button_info", "button_profile",
-            "button_style", "button_message", "button_reaction", "button_spam",
-            "button_change", "button_enemy", "button_filter", "button_protection",
-            "button_ai", "button_report", "button_tools", "button_monshi",
-            "button_mention", "button_fortune"
-        ]
-        for key in all_keys:
-            db.set_button_settings(user_id, {**db.get_button_settings(user_id), key: False})
-        await query.edit_message_text(
-            "🔘 **مدیریت دکمه‌ها**\n\n❌ همه دکمه‌ها خاموش شدند.",
-            reply_markup=get_buttons_menu_keyboard(user_id)
-        )
-        await query.answer("❌ همه دکمه‌ها خاموش شدند")
-        return
-    
-    if data == "buttons_menu_" + user_id_str:
-        await query.edit_message_text(
-            "🔘 **مدیریت دکمه‌ها**\n\nروی هر دکمه بزنید تا روشن/خاموش شود.\n✅ = روشن (رنگی)\n❌ = خاموش (معمولی)",
-            reply_markup=get_buttons_menu_keyboard(user_id)
-        )
-        return
-    
-    # ===== دکمه بستن =====
-    if data.startswith("close_panel_"):
-        await query.answer("❌ بستن پنل")
-        try:
-            await query.message.delete()
-        except:
-            await query.edit_message_text("✅ پنل بسته شد")
-        return
-    
-    if data == "back_main":
-        await query.edit_message_text(
-            "🌟 پنل مدیریت سلف‌بات\n\n⚠️ توجه: این پنل فقط مخصوص شماست\n\n✅ سلف‌بات به صورت ۲۴ ساعته فعال می‌ماند",
-            reply_markup=get_main_panel_keyboard(user_id)
-        )
-        return
-    
-    # ===== پنل ادمین =====
-    if data == "admin_panel":
-        if user_id != ADMIN_ID:
-            await query.answer("⛔ دسترسی غیرمجاز", show_alert=True)
-            return
-        await query.edit_message_text(
-            "👑 پنل ادمین",
-            reply_markup=get_admin_panel_keyboard()
-        )
-        return
-    
-    if data == "admin_get_db":
-        if user_id != ADMIN_ID:
-            await query.answer("⛔ دسترسی غیرمجاز", show_alert=True)
-            return
-        db_path = 'main_database.db'
-        if os.path.exists(db_path):
-            try:
-                await context.bot.send_document(
-                    chat_id=user_id,
-                    document=open(db_path, 'rb'),
-                    caption=f"📊 **دیتابیس کامل**\n🕐 زمان: {get_now().strftime('%Y/%m/%d %H:%M:%S')}\n📁 حجم: {os.path.getsize(db_path) / 1024:.2f} KB"
-                )
-                await query.answer("✅ دیتابیس ارسال شد", show_alert=True)
-            except Exception as e:
-                await query.answer(f"❌ خطا: {str(e)[:50]}", show_alert=True)
-        else:
-            await query.answer("❌ فایل دیتابیس یافت نشد", show_alert=True)
-        return
-    
-    if data == "admin_upload_db":
-        if user_id != ADMIN_ID:
-            await query.answer("⛔ دسترسی غیرمجاز", show_alert=True)
-            return
-        await query.edit_message_text(
-            "📥 **آپلود دیتابیس**\n\nلطفاً فایل دیتابیس جدید را به صورت فایل ارسال کنید.\n\n⚠️ توجه: این کار دیتابیس فعلی را بازنویسی می‌کند."
-        )
-        context.user_data['upload_db_mode'] = True
-        return
-    
-    if data == "admin_toggle_auto_db":
-        if user_id != ADMIN_ID:
-            await query.answer("⛔ دسترسی غیرمجاز", show_alert=True)
-            return
-        global DB_AUTO_SEND_ENABLED
-        settings = db.get_db_backup_settings()
-        new_status = not settings.get('auto_send_enabled', 1)
-        db.set_db_backup_settings(auto_send_enabled=new_status)
-        DB_AUTO_SEND_ENABLED = new_status
-        await query.edit_message_text(
-            "👑 پنل ادمین",
-            reply_markup=get_admin_panel_keyboard()
-        )
-        await query.answer(f"✅ ارسال خودکار {'فعال' if new_status else 'غیرفعال'} شد", show_alert=True)
-        return
-    
-    if data == "admin_toggle_group_db":
-        if user_id != ADMIN_ID:
-            await query.answer("⛔ دسترسی غیرمجاز", show_alert=True)
-            return
-        global DB_SEND_TO_GROUP
-        settings = db.get_db_backup_settings()
-        new_status = not settings.get('send_to_group', 0)
-        db.set_db_backup_settings(send_to_group=new_status)
-        DB_SEND_TO_GROUP = new_status
-        await query.edit_message_text(
-            "👑 پنل ادمین",
-            reply_markup=get_admin_panel_keyboard()
-        )
-        await query.answer(f"✅ ارسال به گروه {'فعال' if new_status else 'غیرفعال'} شد", show_alert=True)
-        return
-    
-    # ===== راهنما =====
-    if data.startswith("help_"):
-        parts = data.split('_')
-        if len(parts) >= 2:
-            section = parts[1]
-            target_user = parts[2] if len(parts) > 2 else user_id_str
-            if target_user != user_id_str:
-                await query.answer("⛔ این پنل مال شما نیست", show_alert=True)
-                return
-            keyboard, help_text = get_help_keyboard(user_id, section)
-            await query.edit_message_text(
-                help_text,
-                parse_mode='markdown',
-                reply_markup=keyboard
-            )
-        return
-    
-    # ===== مدیریت منوها =====
-    menu_map = {
-        "time": get_time_menu_keyboard,
-        "bio": get_bio_menu_keyboard,
-        "lock": get_lock_menu_keyboard,
-        "ai": get_ai_menu_keyboard,
-        "user": get_user_menu_keyboard,
-        "comment": get_comment_menu_keyboard,
-        "general": get_general_menu_keyboard,
-        "action": get_action_menu_keyboard,
-        "games": get_games_menu_keyboard,
-        "translate": get_translate_menu_keyboard,
-        "google": get_google_menu_keyboard,
-        "info": get_info_menu_keyboard,
-        "profile": get_profile_menu_keyboard,
-        "style": get_style_menu_keyboard,
-        "message": get_message_menu_keyboard,
-        "reaction": get_reaction_menu_keyboard,
-        "spam": get_spam_menu_keyboard,
-        "change": get_change_menu_keyboard,
-        "enemy": get_enemy_menu_keyboard,
-        "filter": get_filter_menu_keyboard,
-        "protection": get_protection_menu_keyboard,
-        "report": get_report_menu_keyboard,
-        "tools": get_tools_menu_keyboard,
-        "monshi": get_monshi_menu_keyboard,
-        "mention": get_mention_menu_keyboard,
-        "fortune": get_fortune_menu_keyboard,
-        "animation": get_animation_menu_keyboard
-    }
-    
-    menu_titles = {
-        "time": "⚈ دستورات زمان و پروفایل",
-        "bio": "📝 تنظیمات بیو",
-        "lock": "⊖ قفل رسانه",
-        "ai": "☥ هوش مصنوعی",
-        "user": "☗ مدیریت کاربران",
-        "comment": "✼ کامنت خودکار",
-        "general": "✿ دستورات عمومی",
-        "action": "☥ اکشن‌ها",
-        "games": "⚕ بازی‌ها",
-        "translate": "❍ ترجمه خودکار",
-        "google": "𖢅 گوگل و اهنگ",
-        "info": "֍ دستورات اطلاعاتی",
-        "profile": "𖢨 مدیریت پروفایل",
-        "style": "⩐ استایل متن",
-        "message": "𑪡 مدیریت پیام",
-        "reaction": "☖ ریکشن خودکار",
-        "spam": "𖥞 ارسال اسپم",
-        "change": "☗ تغییر پروفایل",
-        "enemy": "⚇ مدیریت دشمنان",
-        "filter": "✿ فیلتر کلمات",
-        "protection": "⚉ حفاظت اسپم",
-        "report": "֎ گزارش",
-        "tools": "🛠 ابزارها",
-        "monshi": "🤖 منشی هوشمند",
-        "mention": "🏷️ تگ همه",
-        "fortune": "🔮 فال و طالع‌بینی",
-        "animation": "☻ انیمیشن‌ها"
-    }
-    
-    for key, func in menu_map.items():
-        if data == f"{key}_menu_{user_id_str}":
-            title = menu_titles.get(key, f"بخش {key}")
-            await query.edit_message_text(
-                title,
-                reply_markup=func(user_id)
-            )
-            return
-    
-    # ===== دکمه‌های اجرای دستورات =====
-    if data.startswith("exec_"):
-        await exec_command_handler(update, context)
-        return
-    
-    # ===== دکمه‌های ادمین =====
-    if data == "admin_requests":
-        await admin_requests_handler(update, context)
-        return
-    if data == "admin_login":
-        await admin_login_handler(update, context)
-        return
-    if data == "admin_active":
-        await admin_active_handler(update, context)
-        return
-    if data == "admin_selfbots":
-        await admin_selfbots_handler(update, context)
-        return
-    if data == "admin_stats":
-        await admin_stats_handler(update, context)
-        return
-    if data == "admin_broadcast":
-        await admin_broadcast_handler(update, context)
-        return
-    if data.startswith("approve_"):
-        await approve_handler(update, context)
-        return
-    if data.startswith("reject_"):
-        await reject_handler(update, context)
-        return
-    if data.startswith("stop_selfbot_"):
-        await stop_selfbot_handler(update, context)
-        return
-    if data.startswith("restart_selfbot_"):
-        await restart_selfbot_handler(update, context)
-        return
-    
-    await query.answer("✅ دستور اجرا شد")
-
 if __name__ == '__main__':
     print("=" * 60)
-    print("🔧 نسخه نهایی با مدیریت دکمه‌ها، دیتابیس، هوش جدید و فونت تایم")
+    print("🔧 نسخه نهایی با مدیریت دکمه‌ها، دیتابیس و هوش جدید")
     print("📅 تاریخ: 2026-07-15")
     print("=" * 60)
     logger.info("🔧 نسخه نهایی در حال اجراست")
