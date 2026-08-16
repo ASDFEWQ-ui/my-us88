@@ -2860,7 +2860,6 @@ class SelfBotManager:
                 try:
                     photo_path = await self.client.download_media(reply_msg.photo)
                     if photo_path:
-                        # آپلود عکس به سرور (در اینجا ساده‌سازی شده)
                         await event.edit("❌ این قابلیت نیاز به آپلود فایل دارد و در حال حاضر پشتیبانی نمی‌شود")
                         if os.path.exists(photo_path):
                             os.remove(photo_path)
@@ -5184,7 +5183,7 @@ def get_main_panel_keyboard(user_id):
     return InlineKeyboardMarkup(keyboard)
 
 # ======================================================
-# بقیه کیبوردها (با حذف style)
+# کیبوردهای دیگر (با حذف style)
 # ======================================================
 
 def get_buttons_menu_keyboard(user_id):
@@ -5353,7 +5352,10 @@ def get_ai_menu_keyboard(user_id):
     ]
     return InlineKeyboardMarkup(keyboard)
 
-# بقیه کیبوردها (با حذف style) - خلاصه شده
+# ======================================================
+# کیبوردهای دیگر - خلاصه شده
+# ======================================================
+
 def get_bio_menu_keyboard(user_id):
     bio_time1 = db.get_bio_setting(user_id, 'ساعت_در_بیو')
     bio_time2 = db.get_bio_setting(user_id, 'ساعت_در_بیو_۲')
@@ -5427,1009 +5429,582 @@ def get_lock_menu_keyboard(user_id):
     return InlineKeyboardMarkup(keyboard)
 
 # ======================================================
-# ادامه کیبوردهای دیگر (به دلیل محدودیت طول، خلاصه)
+# توابع عضویت، ادمین، اصلی
 # ======================================================
 
-def get_user_menu_keyboard(user_id):
-    keyboard = [
-        [InlineKeyboardButton("🥷 دشمن", callback_data=f"exec_enemy_{user_id}"), InlineKeyboardButton("🧸 دوست", callback_data=f"exec_friend_{user_id}")],
-        [InlineKeyboardButton("🔒 قفل پیوی", callback_data=f"exec_lock_pv_{user_id}"), InlineKeyboardButton("🔓 باز پی", callback_data=f"exec_unlock_pv_{user_id}")],
-        [InlineKeyboardButton("🔒 قفل پیوی همه", callback_data=f"exec_lock_all_{user_id}"), InlineKeyboardButton("🔓 باز پی همه", callback_data=f"exec_unlock_all_{user_id}"), InlineKeyboardButton("⛔ بلاک", callback_data=f"exec_block_{user_id}")],
-        [InlineKeyboardButton("📖 راهنما", callback_data=f"help_user_{user_id}"), InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main")]
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
-def get_comment_menu_keyboard(user_id):
-    keyboard = [
-        [InlineKeyboardButton("💬 کامنت", callback_data=f"exec_comment_{user_id}"), InlineKeyboardButton("📊 کانال‌ها", callback_data=f"exec_channels_{user_id}")],
-        [InlineKeyboardButton("🗑️ حذف کانال", callback_data=f"exec_delete_channel_{user_id}"), InlineKeyboardButton("🔍 تست کانال", callback_data=f"exec_test_channel_{user_id}")],
-        [InlineKeyboardButton("📖 راهنما", callback_data=f"help_comment_{user_id}"), InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main")]
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
-# ======================================================
-# کیبورد راهنما
-# ======================================================
-
-def get_help_keyboard(user_id, section):
-    help_texts = {
-        "time": """
-📖 **راهنمای بخش زمان و پروفایل**
-
-🔹 **تایم روشن**: نمایش ساعت روی اسم شما
-🔹 **تایم خاموش**: حذف ساعت از اسم شما
-🔹 **تایمر پرچم**: نمایش پرچم کنار ساعت
-🔹 **تایم [اعداد]**: تنظیم فونت ساعت (مثلاً تایم 5.10)
-🔹 **تقویم**: نمایش تاریخ شمسی، میلادی و قمری
-
-📌 **تنظیمات بیو:**
-• ساعت در بیو: نمایش ساعت در بیو
-• ساعت در بیو ۲: نمایش ساعت با ثانیه
-• بیو تاریخ: نمایش تاریخ در بیو
-• بیو کامل: نمایش همه اطلاعات
-• بیو عاشقانه: نمایش قلب در بیو
-• بیو ایموجی: نمایش ایموجی تصادفی
-• بیو فصل: نمایش فصل فعلی
-• بیو روز هفته: نمایش روز هفته
-• بیو شمارش معکوس: شمارش معکوس تا سال نو
-• بیو متن دلخواه: نمایش متن دلخواه
-
-⚠️ برای تغییر هر کدام: `[نام تنظیم] روشن/خاموش`
-مثال: `ساعت در بیو روشن`
-""",
-        "ai": """
-📖 **راهنمای هوش مصنوعی**
-
-🔹 **هوش‌های موجود:**
-• 🧠 دیپ‌سیک (DeepSeek)
-• 💬 چت جی‌پی‌تی (ChatGPT)
-• 🤖 گراک (Grok)
-• 📦 بلک‌باکس (Blackbox)
-• 🟢 OpenAI (با مدل‌های gpt-4o, gpt-4-turbo, gpt-3.5-turbo)
-
-📌 **دستورات:**
-- فعال‌سازی در پی‌وی: `[نام هوش] پیوی`
-- فعال‌سازی در گروه: `[نام هوش] گروه`
-- خاموش کردن همه در پی‌وی: `خاموش پیوی`
-- خاموش کردن همه در گروه: `خاموش گروه`
-- تغییر مدل OpenAI: `openai مدل [نام مدل]`
-
-🖼️ **ساخت عکس:**
-• `ساخت عکس هوش [متن]`
-• `ساخت عکس gpt [متن]`
-• `جیبلی` (با ریپلای روی عکس)
-
-استایل‌ها: anime, photographic, fantasy-art, digital-art, comic-book, enhance, line-art, analog-film, neon-punk, isometric, low-poly, origami, modeling-compound, cinematic, 3d-model, pixel-art, tile-texture
-""",
-        "lock": """
-📖 **راهنمای قفل رسانه**
-
-🔹 **قفل لینک**: جلوگیری از ارسال لینک
-🔹 **قفل عکس**: جلوگیری از ارسال عکس
-🔹 **قفل ویدیو**: جلوگیری از ارسال ویدیو
-🔹 **قفل استیکر**: جلوگیری از ارسال استیکر
-🔹 **قفل گیف**: جلوگیری از ارسال گیف
-🔹 **قفل ویس**: جلوگیری از ارسال ویس
-🔹 **قفل فایل**: جلوگیری از ارسال فایل
-🔹 **قفل موزیک**: جلوگیری از ارسال موزیک
-🔹 **قفل ویدیو نوت**: جلوگیری از ارسال ویدیو نوت
-🔹 **قفل کانتکت**: جلوگیری از ارسال کانتکت
-🔹 **قفل لوکیشن**: جلوگیری از ارسال لوکیشن
-🔹 **قفل ایموجی**: جلوگیری از ارسال ایموجی
-🔹 **قفل متن**: جلوگیری از ارسال متن
-
-📌 **نحوه استفاده:**
-- برای قفل کردن برای همه: `قفل[نام] روشن/خاموش`
-- برای قفل کردن برای کاربر خاص: روی پیام کاربر ریپلای کنید و `قفل [نام] روشن/خاموش` ارسال کنید
-""",
-        "fortune": """
-📖 **راهنمای فال**
-
-🔹 **فال عمومی** : فال روزانه با ایموجی‌های مختلف
-🔹 **فال حافظ** : فال با اشعار حافظ
-🔹 **فال قهوه** : فال با طعم قهوه
-
-📌 **دستورات:**
-- `فال` - نمایش فال عمومی
-- `فال حافظ` - نمایش فال حافظ
-- `فال قهوه` - نمایش فال قهوه
-""",
-        "tools": """
-📖 **راهنمای ابزارها**
-
-🔹 **امار گپ** : نمایش آمار گفتگو با کاربر (با ریپلای)
-🔹 **کد QR** : تولید کد QR از متن یا عکس (با ریپلای)
-🔹 **تگ ادمین** : نمایش لیست ادمین‌های گروه
-🔹 **پین** : پین کردن پیام (با ریپلای)
-🔹 **سلف روشن/خاموش** : فعال/غیرفعال کردن سلف‌بات
-🔹 **ریاضی** : محاسبه عبارات ریاضی
-🔹 **تبدیل ارز** : تبدیل ارزها به هم
-🔹 **فرمول** : نمایش فرمول ریاضی به صورت تصویر
-
-📌 **مثال‌ها:**
-- `ریاضی 2+3*4`
-- `تبدیل ارز 100 USD EUR`
-- `فرمول x^2 + y^2 = z^2`
-""",
-        "user": """
-📖 **راهنمای مدیریت کاربران**
-
-🔹 **دشمن** : اضافه کردن کاربر به لیست دشمنان (با ریپلای)
-🔹 **دوست** : حذف کاربر از لیست دشمنان (با ریپلای)
-🔹 **قفل پیوی** : قفل کردن پیوی با کاربر (با ریپلای)
-🔹 **باز پی** : باز کردن قفل پیوی (با ریپلای)
-🔹 **قفل پیوی همه** : قفل کردن همه پیوی‌ها
-🔹 **باز پی همه** : باز کردن قفل همه پیوی‌ها
-🔹 **بلاک** : بلاک کردن کاربر (فقط در پی‌وی)
-""",
-        "games": """
-📖 **راهنمای بازی‌ها**
-
-🔹 **تاس [1-6]** : پرتاب تاس تا عدد مورد نظر بیاید
-🔹 **دارت** : بازی دارت تا ۶ بیاید
-🔹 **بسکتبال** : بازی بسکتبال تا ۵ بیاید
-🔹 **فوتبال** : بازی فوتبال تا ۵ بیاید
-🔹 **بولینگ** : بازی بولینگ تا ۶ بیاید
-🔹 **تاس کازینو** : پرتاب تاس کازینو
-🔹 **سه رنگ** : بازی حدس رنگ
-🔹 **شانس [عدد]** : بازی شانس با درصد مشخص
-""",
-        "monshi": """
-📖 **راهنمای منشی هوشمند**
-
-🔹 **منشی** : یک دستیار خودکار برای پاسخ به پیام‌ها
-
-📌 **دستورات:**
-- `منشی [پاسخ]` - فعال کردن منشی با پاسخ دلخواه
-- `منشی خاموش` - غیرفعال کردن منشی
-- `افزودن پاسخ سوال:جواب` - اضافه کردن پاسخ به دیتابیس
-- `حذف پاسخ سوال` - حذف پاسخ از دیتابیس
-- `لیست پاسخ` - نمایش لیست پاسخ‌ها
-- `پاک کردن پاسخ‌ها` - پاک کردن همه پاسخ‌ها
-""",
-        "mention": """
-📖 **راهنمای تگ همه**
-
-🔹 **تگ همه** : تگ کردن همه اعضای گروه (به صورت ۱۳ نفره)
-
-📌 **دستورات:**
-- `تگ همه [متن اختیاری]` - شروع تگ کردن
-- `لغو تگ` - لغو تگ کردن
-
-⚠️ توجه: این دستور فقط در گروه‌ها کار می‌کند
-""",
-        "comment": """
-📖 **راهنمای کامنت خودکار**
-
-🔹 **کامنت [متن]** : تنظیم متن کامنت برای کانال فعلی
-🔹 **کانال‌ها** : نمایش لیست کانال‌های تنظیم شده
-🔹 **حذف کانال** : حذف تنظیمات کانال فعلی
-🔹 **تست کانال** : نمایش اطلاعات کانال فعلی
-
-📌 **نحوه استفاده:**
-1. در کانال مورد نظر دستور `کامنت [متن]` را ارسال کنید
-2. با ارسال هر پست جدید در کانال، کامنت شما به‌صورت خودکار ارسال می‌شود
-""",
-        "default": """
-📖 **راهنمای عمومی**
-
-هر بخش دارای راهنمای اختصاصی خود است.
-برای مشاهده راهنمای هر بخش، روی دکمه 📖 راهنما در همان بخش کلیک کنید.
-
-🔹 **دستورات عمومی:**
-- `وضعیت` - نمایش وضعیت کامل سلف‌بات
-- `درباره` - اطلاعات درباره بات
-- `پینگ` - بررسی سرعت پاسخ‌دهی
-- `تقویم` - نمایش تاریخ کامل
-- `.پنل` یا `پنل` - باز کردن پنل مدیریت
-"""
-    }
-    
-    help_text = help_texts.get(section, help_texts["default"])
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("⚈ بازگشت", callback_data=f"{section}_menu_{user_id}")]
-    ]), help_text
-
-# ======================================================
-# توابع اینلاین و هندلرها
-# ======================================================
-
-async def inline_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.inline_query
-    if not query:
-        return
-    user_id = query.from_user.id
-    user_data = db.get_user(str(user_id))
-    has_access = False
-    if user_data and user_data.get('self_active'):
-        has_access = True
-    elif str(user_id) in selfbot_managers and selfbot_managers[str(user_id)].running:
-        has_access = True
-    
-    if not has_access:
-        results = [
-            InlineQueryResultArticle(
-                id=str(uuid.uuid4()),
-                title="⛔ دسترسی محدود",
-                description="شما عضو سرویس نیستید",
-                input_message_content=InputTextMessageContent("⛔ شما به این پنل دسترسی ندارید\n\nبرای عضویت: /start")
-            )
-        ]
-        await query.answer(results, cache_time=0, is_personal=True)
-        return
-    
-    if not query.query:
-        results = [
-            InlineQueryResultArticle(
-                id=str(uuid.uuid4()),
-                title="🌟 پنل اصلی",
-                description="مدیریت تمام قابلیت‌های سلف‌بات",
-                input_message_content=InputTextMessageContent("🌟 پنل سلف‌بات باز شد\n\n⚠️ توجه: این پنل فقط مخصوص شماست"),
-                reply_markup=get_main_panel_keyboard(user_id)
-            ),
-        ]
-        if user_id == ADMIN_ID:
-            results.append(
-                InlineQueryResultArticle(
-                    id=str(uuid.uuid4()),
-                    title="👑 پنل ادمین",
-                    description="مدیریت کاربران و سلف‌بات‌ها و ارسال پیام همگانی + دیتابیس",
-                    input_message_content=InputTextMessageContent("👑 پنل ادمین"),
-                    reply_markup=get_admin_panel_keyboard()
-                )
-            )
-    else:
-        search = query.query.lower()
-        results = []
-        all_commands = [
-            ("⚈ زمان و پروفایل", "time", "مدیریت زمان و پروفایل + بیو"),
-            ("☻ انیمیشن", "animation", "انیمیشن قلب و ماه و سنتت + استیکر متن"),
-            ("☗ مدیریت کاربران", "user", "مدیریت دشمن/دوست/بلاک"),
-            ("⊖ قفل رسانه", "lock", "قفل لینک/عکس/ویدیو/استیکر/ویس/فایل/موزیک/ویدیو نوت/کانتکت/لوکیشن/ایموجی/متن"),
-            ("✼ کامنت", "comment", "کامنت خودکار در کانال"),
-            ("✿ عمومی", "general", "وضعیت/درباره/پینگ"),
-            ("☥ اکشن", "action", "اکشن‌های تایپ و ..."),
-            ("⚕ بازی‌ها", "games", "بازی‌های تاس/دارت/بسکتبال/فوتبال/بولینگ/کازینو/سه رنگ"),
-            ("❍ ترجمه", "translate", "ترجمه به زبان‌های مختلف"),
-            ("𖢅 گوگل", "google", "جستجوی گوگل/اهنگ"),
-            ("֍ اطلاعاتی", "info", "اطلاعات کاربر/سیستم/نشست‌ها/قیمت ارز/تاریخ ساخت اکانت/تشخیص متن"),
-            ("𖢨 پروفایل", "profile", "کپی پروفایل و بیو"),
-            ("⩐ استایل متن", "style", "بولد/زیرخط/خط خورده/نقل قول/اسپویلر/کج/کد/پیش"),
-            ("𑪡 مدیریت پیام", "message", "حذف پیام و اتوسین + اسکرین‌شات"),
-            ("☖ ریکشن", "reaction", "ریکت خودکار"),
-            ("𖥞 اسپم", "spam", "ارسال اسپم"),
-            ("☗ تغییر پروفایل", "change", "تغییر نام/بیو/پروفایل"),
-            ("⚇ مدیریت دشمنان", "enemy", "لیست دشمن/اضافه اسپم"),
-            ("✿ فیلتر کلمات", "filter", "فیلتر کلمات"),
-            ("⚉ حفاظت اسپم", "protection", "محافظت در برابر اسپم"),
-            ("☥ هوش مصنوعی", "ai", "مدیریت هوش مصنوعی + ساخت عکس"),
-            ("֎ گزارش", "report", "تنظیم گروه گزارش"),
-            ("🛠 ابزار", "tools", "امار گپ / کد QR / تگ ادمین / پین / سلف روشن/خاموش / ریاضی / تبدیل ارز / فرمول ریاضی"),
-            ("🤖 منشی هوشمند", "monshi", "مدیریت منشی و پاسخ‌های خودکار"),
-            ("🏷️ تگ همه", "mention", "تگ کردن همه اعضای گروه"),
-            ("🔮 فال", "fortune", "فال عمومی / فال حافظ / فال قهوه")
-        ]
-        for title, cmd, desc in all_commands:
-            if search in title.lower() or search in desc.lower() or search in cmd.lower():
-                results.append(
-                    InlineQueryResultArticle(
-                        id=str(uuid.uuid4()),
-                        title=title,
-                        description=desc,
-                        input_message_content=InputTextMessageContent(f"✅ دستور {title} ارسال شد"),
-                        reply_markup=InlineKeyboardMarkup([[
-                            InlineKeyboardButton(f"ℹ️ توضیحات", callback_data=f"desc_{cmd}"),
-                            InlineKeyboardButton(f"▶️ باز کردن", callback_data=f"menu_{cmd}")
-                        ]])
-                    )
-                )
-    await query.answer(results, cache_time=0, is_personal=True)
-
-# ======================================================
-# تابع button_callback - هندلر اصلی دکمه‌ها
-# ======================================================
-
-async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def membership_request_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     if not query:
         return
-    data = query.data
+    await query.answer()
     user_id = query.from_user.id
     user_id_str = str(user_id)
-    
-    # ===== درخواست عضویت =====
-    if data == f"membership_request_{user_id_str}":
-        await membership_request_handler(update, context)
+    user_data = db.get_user(user_id_str)
+    if not user_data:
+        await query.edit_message_text("❌ خطا")
+        return
+    if user_data.get('self_active'):
+        await query.edit_message_text("✅ شما قبلاً عضو شده‌اید")
+        return
+    if user_data.get('rejected'):
+        await query.edit_message_text("❌ درخواست شما رد شده است")
+        return
+    if user_data.get('request_sent'):
+        await query.edit_message_text("⏳ درخواست شما در انتظار تأیید است")
         return
     
-    if data == f"membership_status_{user_id_str}":
-        await membership_status_handler(update, context)
+    db.update_user(user_id_str, request_sent=1, request_date=datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+    admin_text = f"""
+📋 درخواست عضویت جدید
+━━━━━━━━━━━━━━━━━━━━
+👤 نام: {user_data['full_name']}
+🆔 آیدی: {user_id_str}
+👤 یوزرنیم: @{user_data['username'] if user_data['username'] else 'ندارد'}
+📅 تاریخ: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+━━━━━━━━━━━━━━━━━━━━
+    """
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("✅ تأیید", callback_data=f"approve_{user_id_str}"), InlineKeyboardButton("❌ رد", callback_data=f"reject_{user_id_str}")]
+    ])
+    await context.bot.send_message(chat_id=ADMIN_ID, text=admin_text, reply_markup=keyboard)
+    await query.edit_message_text("✅ درخواست عضویت شما ثبت شد!\n\n⏳ منتظر تأیید ادمین باشید")
+
+async def membership_status_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if not query:
+        return
+    await query.answer()
+    user_id = query.from_user.id
+    user_id_str = str(user_id)
+    user_data = db.get_user(user_id_str)
+    if not user_data:
+        await query.edit_message_text("👤 شما ثبت‌نام نکرده‌اید")
+    elif user_data.get('self_active'):
+        exp = user_data.get('expiration_date', 'نامشخص')
+        await query.edit_message_text(f"✅ شما عضو فعال هستید\n\n📅 انقضا: {exp}")
+    elif user_data.get('admin_approved'):
+        await query.edit_message_text("⏳ در مرحله ورود اطلاعات\n\nشماره تلفن خود را وارد کنید")
+    elif user_data.get('request_sent'):
+        await query.edit_message_text("⏳ درخواست شما در انتظار تأیید است")
+    elif user_data.get('rejected'):
+        await query.edit_message_text("❌ درخواست شما رد شده است")
+    else:
+        await query.edit_message_text("👤 وضعیت نامشخص")
+
+# ======================================================
+# توابع اصلی و اجرای برنامه
+# ======================================================
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message:
+        return
+    user = update.effective_user
+    user_id = str(user.id)
+    full_name = user.full_name or "کاربر"
+    username = user.username or ""
+    db.add_user(user_id, full_name, username)
+    user_data = db.get_user(user_id)
+    if user_data and user_data.get('self_active'):
+        text = f"""
+👋 سلام {full_name} عزیز!
+
+✅ حساب شما فعال است.
+• /panel - پنل مدیریت
+• @{BOT_USERNAME} - پنل اینلاین
+• .پنل - پنل در همین چت
+• .اهنگ [نام آهنگ] - پخش آهنگ
+
+⚠️ پنل فقط مخصوص شماست
+        """
+        keyboard = [[InlineKeyboardButton("📊 وضعیت عضویت", callback_data=f"membership_status_{user_id}")]]
+        if user.id == ADMIN_ID:
+            keyboard.append([InlineKeyboardButton("👑 پنل ادمین", callback_data=f"admin_panel")])
+        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+        return
+    text = f"""
+👋 سلام {full_name} عزیز!
+
+🌟 به ربات سلف‌بات خوش آمدید.
+
+📌 برای استفاده:
+1️⃣ روی دکمه عضویت کلیک کنید
+2️⃣ شماره تلفن خود را وارد کنید
+3️⃣ کد تأیید را وارد کنید
+
+✅ پس از فعال شدن:
+• /panel - پنل مدیریت
+• @{BOT_USERNAME} - پنل اینلاین
+• .پنل - پنل در همین چت
+• .اهنگ [نام آهنگ] - پخش آهنگ
+    """
+    keyboard = [
+        [InlineKeyboardButton("📝 عضویت", callback_data=f"membership_request_{user_id}")],
+        [InlineKeyboardButton("📊 وضعیت عضویت", callback_data=f"membership_status_{user_id}")]
+    ]
+    if user.id == ADMIN_ID:
+        keyboard.append([InlineKeyboardButton("👑 پنل ادمین", callback_data=f"admin_panel")])
+    await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+
+async def panel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message:
+        return
+    user_id = update.effective_user.id
+    user_data = db.get_user(str(user_id))
+    if not user_data or not user_data.get('self_active'):
+        await update.message.reply_text("⛔ شما عضو سرویس نیستید")
+        return
+    try:
+        await update.message.delete()
+    except:
+        pass
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🌟 باز کردن پنل اینلاین", switch_inline_query_current_chat="")]
+    ])
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text="🌟 پنل مدیریت سلف‌بات\n\nبرای باز کردن پنل، روی دکمه کلیک کنید:\n\n⚠️ توجه: این پنل فقط مخصوص شماست",
+        reply_markup=keyboard
+    )
+
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message or not update.message.text:
+        return
+    user_id = update.effective_user.id
+    user_id_str = str(user_id)
+    text = update.message.text
+    text = convert_persian_to_english(text)
+    
+    # ===== مدیریت آپلود دیتابیس =====
+    if context.user_data.get('upload_db_mode') and user_id == ADMIN_ID:
+        if update.message.document:
+            await handle_upload_db(update, context)
+            return
+        elif text == '/cancel':
+            context.user_data['upload_db_mode'] = False
+            await update.message.reply_text("✅ آپلود دیتابیس لغو شد")
+            return
+        else:
+            await update.message.reply_text("❌ لطفاً یک فایل دیتابیس (فایل .db) ارسال کنید یا /cancel را بزنید.")
+            return
+    
+    # ===== مدیریت پیام همگانی =====
+    if context.user_data.get('broadcast_mode') and user_id == ADMIN_ID:
+        await handle_broadcast_message(update, context)
         return
     
-    # ===== پردازش کد تایید از کیبورد عددی =====
-    if data.startswith("code_") and not data.startswith("code_done_"):
-        parts = data.split('_')
-        if len(parts) >= 3:
-            digit = parts[1]
-            target_user = parts[2]
-            if target_user != user_id_str:
-                await query.answer("⛔ این پنل مال شما نیست", show_alert=True)
-                return
-            
-            if 'temp_code' not in context.user_data:
-                context.user_data['temp_code'] = ""
-            
-            if digit == "del":
-                context.user_data['temp_code'] = context.user_data['temp_code'][:-1]
-            elif digit == "clear":
-                context.user_data['temp_code'] = ""
-            elif digit == "cancel":
-                context.user_data['temp_code'] = ""
-                await query.edit_message_text("❌ ورود کد لغو شد")
-                return
+    user_data = db.get_user(user_id_str)
+    if not user_data:
+        await start(update, context)
+        return
+    if user_data.get('rejected'):
+        await update.message.reply_text("✖ درخواست شما رد شده است")
+        return
+    
+    # ===== کاربر فعال - سلف‌بات =====
+    if user_data.get('self_active'):
+        if user_id_str not in selfbot_managers:
+            session_file = user_data.get('session_file')
+            if session_file and os.path.exists(session_file):
+                manager = SelfBotManager(user_id_str)
+                if await manager.start(session_file):
+                    selfbot_managers[user_id_str] = manager
+                    await update.message.reply_text("🚀 سلف‌بات فعال شد")
+                else:
+                    await update.message.reply_text("⚠️ خطا در شروع سلف‌بات")
             else:
-                if len(context.user_data['temp_code']) < 5:
-                    context.user_data['temp_code'] += digit
-            
-            code_display = context.user_data['temp_code'] or "_____"
-            persian_digits = {'0':'۰', '1':'۱', '2':'۲', '3':'۳', '4':'۴', '5':'۵', '6':'۶', '7':'۷', '8':'۸', '9':'۹'}
-            code_persian = ''.join(persian_digits.get(c, c) for c in code_display)
-            
-            await query.edit_message_text(
-                f"📩 **کد تأیید را وارد کنید:**\n\n"
-                f"┌─────────────┐\n"
-                f"│   {code_persian}   │\n"
-                f"└─────────────┘\n\n"
-                f"📌 کد ۵ رقمی را با دکمه‌های زیر وارد کنید",
+                await update.message.reply_text("⚠️ فایل سشن یافت نشد")
+        else:
+            await update.message.reply_text("✅ سلف‌بات در حال اجراست")
+        return
+    
+    # ===== مراحل عضویت =====
+    step = user_data.get('step')
+    
+    if step == 'get_phone':
+        if not user_data.get('admin_approved'):
+            await update.message.reply_text("⏳ درخواست شما تأیید نشده است")
+            return
+        db.update_user(user_id_str, phone=text, step='get_code')
+        await update.message.reply_text(f"✅ شماره {text} ذخیره شد\n⏳ در حال ارسال کد...")
+        try:
+            session_name = f"user_{user_id_str}"
+            session_path = os.path.join(SESSIONS_FOLDER, f"{session_name}.session")
+            if os.path.exists(session_path):
+                os.remove(session_path)
+            user_api = get_user_api(user_id_str)
+            if not user_api:
+                await update.message.reply_text("❌ خطا در دریافت API")
+                return
+            API_ID = user_api["api_id"]
+            API_HASH = user_api["api_hash"]
+            client = TelegramClient(session_path, API_ID, API_HASH)
+            await client.connect()
+            sent_code = await client.send_code_request(text)
+            phone_code_hash = sent_code.phone_code_hash
+            db.update_user(user_id_str, phone_code_hash=phone_code_hash)
+            await update.message.reply_text(
+                "✅ کد تأیید ارسال شد!\n\n"
+                "📩 کد ۵ رقمی را با دکمه‌های زیر وارد کنید:",
                 reply_markup=get_code_keyboard(user_id)
             )
-            await query.answer()
-        return
+            await client.disconnect()
+        except FloodWaitError as e:
+            await update.message.reply_text(f"⏳ {e.seconds} ثانیه صبر کنید")
+            db.update_user(user_id_str, step='get_phone')
+        except Exception as e:
+            logger.error(f"خطا: {e}")
+            await update.message.reply_text(f"✖ خطا: {str(e)[:100]}\nدوباره شماره را وارد کنید")
+            db.update_user(user_id_str, step='get_phone')
     
-    if data.startswith("code_done_"):
-        parts = data.split('_')
-        if len(parts) >= 3:
-            target_user = parts[2]
-            if target_user != user_id_str:
-                await query.answer("⛔ این پنل مال شما نیست", show_alert=True)
-                return
-            
-            code = context.user_data.get('temp_code', '')
-            if len(code) == 5:
-                await query.answer("✅ کد تأیید شد، در حال پردازش...")
-                # استفاده از تابع جدید بدون fake_update
-                await handle_code_submission(update, context, code)
-                context.user_data['temp_code'] = ""
-            else:
-                await query.answer(f"❌ کد باید ۵ رقمی باشد (وارد شده: {len(code)} رقم)", show_alert=True)
-        return
-    
-    # ===== مدیریت دکمه‌ها =====
-    if data.startswith("toggle_button_"):
-        parts = data.split('_')
-        if len(parts) >= 4:
-            button_key = parts[2]
-            target_user = parts[3]
-            if target_user != user_id_str:
-                await query.answer("⛔ این پنل مال شما نیست", show_alert=True)
-                return
-            db.toggle_button(user_id, button_key)
-            await query.edit_message_text(
-                "🔘 **مدیریت دکمه‌ها**\n\nروی هر دکمه بزنید تا روشن/خاموش شود.",
-                reply_markup=get_buttons_menu_keyboard(user_id)
-            )
-            await query.answer("✅ وضعیت دکمه تغییر کرد")
-        return
-    
-    if data.startswith("buttons_on_all_"):
-        target_user = data.split('_')[3]
-        if target_user != user_id_str:
-            await query.answer("⛔ این پنل مال شما نیست", show_alert=True)
-            return
-        all_keys = [
-            "button_time", "button_animation", "button_user", "button_lock",
-            "button_comment", "button_general", "button_action", "button_games",
-            "button_translate", "button_google", "button_info", "button_profile",
-            "button_style", "button_message", "button_reaction", "button_spam",
-            "button_change", "button_enemy", "button_filter", "button_protection",
-            "button_ai", "button_report", "button_tools", "button_monshi",
-            "button_mention", "button_fortune"
-        ]
-        for key in all_keys:
-            db.set_button_settings(user_id, {**db.get_button_settings(user_id), key: True})
-        await query.edit_message_text(
-            "🔘 **مدیریت دکمه‌ها**\n\n✅ همه دکمه‌ها روشن شدند.",
-            reply_markup=get_buttons_menu_keyboard(user_id)
-        )
-        await query.answer("✅ همه دکمه‌ها روشن شدند")
-        return
-    
-    if data.startswith("buttons_off_all_"):
-        target_user = data.split('_')[3]
-        if target_user != user_id_str:
-            await query.answer("⛔ این پنل مال شما نیست", show_alert=True)
-            return
-        all_keys = [
-            "button_time", "button_animation", "button_user", "button_lock",
-            "button_comment", "button_general", "button_action", "button_games",
-            "button_translate", "button_google", "button_info", "button_profile",
-            "button_style", "button_message", "button_reaction", "button_spam",
-            "button_change", "button_enemy", "button_filter", "button_protection",
-            "button_ai", "button_report", "button_tools", "button_monshi",
-            "button_mention", "button_fortune"
-        ]
-        for key in all_keys:
-            db.set_button_settings(user_id, {**db.get_button_settings(user_id), key: False})
-        await query.edit_message_text(
-            "🔘 **مدیریت دکمه‌ها**\n\n❌ همه دکمه‌ها خاموش شدند.",
-            reply_markup=get_buttons_menu_keyboard(user_id)
-        )
-        await query.answer("❌ همه دکمه‌ها خاموش شدند")
-        return
-    
-    if data == "buttons_menu_" + user_id_str:
-        await query.edit_message_text(
-            "🔘 **مدیریت دکمه‌ها**\n\nروی هر دکمه بزنید تا روشن/خاموش شود.\n✅ = روشن (رنگی)\n❌ = خاموش (معمولی)",
-            reply_markup=get_buttons_menu_keyboard(user_id)
-        )
-        return
-    
-    # ===== مدیریت دیتابیس در پنل ادمین =====
-    if data == "admin_get_db":
-        if user_id != ADMIN_ID:
-            await query.answer("⛔ دسترسی غیرمجاز", show_alert=True)
-            return
-        db_path = 'main_database.db'
-        if os.path.exists(db_path):
-            try:
-                await context.bot.send_document(
-                    chat_id=user_id,
-                    document=open(db_path, 'rb'),
-                    caption=f"📊 **دیتابیس کامل**\n🕐 زمان: {get_now().strftime('%Y/%m/%d %H:%M:%S')}\n📁 حجم: {os.path.getsize(db_path) / 1024:.2f} KB"
-                )
-                await query.answer("✅ دیتابیس ارسال شد", show_alert=True)
-            except Exception as e:
-                await query.answer(f"❌ خطا: {str(e)[:50]}", show_alert=True)
-        else:
-            await query.answer("❌ فایل دیتابیس یافت نشد", show_alert=True)
-        return
-    
-    if data == "admin_upload_db":
-        if user_id != ADMIN_ID:
-            await query.answer("⛔ دسترسی غیرمجاز", show_alert=True)
-            return
-        await query.edit_message_text(
-            "📥 **آپلود دیتابیس**\n\nلطفاً فایل دیتابیس جدید را به صورت فایل ارسال کنید.\n\n⚠️ توجه: این کار دیتابیس فعلی را بازنویسی می‌کند."
-        )
-        context.user_data['upload_db_mode'] = True
-        return
-    
-    if data == "admin_toggle_auto_db":
-        if user_id != ADMIN_ID:
-            await query.answer("⛔ دسترسی غیرمجاز", show_alert=True)
-            return
-        global DB_AUTO_SEND_ENABLED
-        settings = db.get_db_backup_settings()
-        new_status = not settings.get('auto_send_enabled', 1)
-        db.set_db_backup_settings(auto_send_enabled=new_status)
-        DB_AUTO_SEND_ENABLED = new_status
-        await query.edit_message_text(
-            "👑 پنل ادمین",
-            reply_markup=get_admin_panel_keyboard()
-        )
-        await query.answer(f"✅ ارسال خودکار {'فعال' if new_status else 'غیرفعال'} شد", show_alert=True)
-        return
-    
-    if data == "admin_toggle_group_db":
-        if user_id != ADMIN_ID:
-            await query.answer("⛔ دسترسی غیرمجاز", show_alert=True)
-            return
-        global DB_SEND_TO_GROUP
-        settings = db.get_db_backup_settings()
-        new_status = not settings.get('send_to_group', 0)
-        db.set_db_backup_settings(send_to_group=new_status)
-        DB_SEND_TO_GROUP = new_status
-        await query.edit_message_text(
-            "👑 پنل ادمین",
-            reply_markup=get_admin_panel_keyboard()
-        )
-        await query.answer(f"✅ ارسال به گروه {'فعال' if new_status else 'غیرفعال'} شد", show_alert=True)
-        return
-    
-    # ===== راهنما =====
-    if data.startswith("help_"):
-        parts = data.split('_')
-        if len(parts) >= 2:
-            section = parts[1]
-            target_user = parts[2] if len(parts) > 2 else user_id_str
-            if target_user != user_id_str:
-                await query.answer("⛔ این پنل مال شما نیست", show_alert=True)
-                return
-            keyboard, help_text = get_help_keyboard(user_id, section)
-            await query.edit_message_text(
-                help_text,
-                parse_mode='markdown',
-                reply_markup=keyboard
-            )
-        return
-    
-    # ===== دکمه بستن =====
-    if data.startswith("close_panel_"):
-        await query.answer("❌ بستن پنل")
+    elif step == 'get_code':
+        db.update_user(user_id_str, code=text)
+        await update.message.reply_text("⏳ در حال تأیید کد...")
         try:
-            await query.message.delete()
-        except:
-            await query.edit_message_text("✅ پنل بسته شد")
-        return
+            session_name = f"user_{user_id_str}"
+            session_path = os.path.join(SESSIONS_FOLDER, f"{session_name}.session")
+            user_api = get_user_api(user_id_str)
+            if not user_api:
+                await update.message.reply_text("❌ خطا در دریافت API")
+                return
+            API_ID = user_api["api_id"]
+            API_HASH = user_api["api_hash"]
+            client = TelegramClient(session_path, API_ID, API_HASH)
+            await client.connect()
+            user_data = db.get_user(user_id_str)
+            # تبدیل کد فارسی به انگلیسی
+            code_for_telegram = persian_to_english_digits(text)
+            await client.sign_in(phone=user_data['phone'], code=code_for_telegram, phone_code_hash=user_data['phone_code_hash'])
+            expiration_date = (datetime.now() + timedelta(days=30)).strftime('%Y-%m-%d')
+            db.update_user(user_id_str, self_active=1, session_file=session_path, expiration_date=expiration_date, step=None)
+            await update.message.reply_text(f"🎉 عضویت کامل شد!\n\n✅ اکانت فعال شد\n📅 انقضا: {expiration_date}")
+            await client.disconnect()
+            manager = SelfBotManager(user_id_str)
+            if await manager.start(session_path):
+                selfbot_managers[user_id_str] = manager
+                await update.message.reply_text("🚀 سلف‌بات فعال شد")
+            admin_message = f"✅ کاربر {user_data['full_name']} وارد شد\n🆔 {user_id_str}\n📞 {user_data['phone']}\n🔑 API: {user_data.get('api_id', 'نامشخص')}"
+            try:
+                await context.bot.send_message(chat_id=ADMIN_ID, text=admin_message)
+            except:
+                pass
+        except SessionPasswordNeededError:
+            db.update_user(user_id_str, step='get_password')
+            await update.message.reply_text("🔐 رمز دو مرحله‌ای را وارد کنید:")
+        except Exception as e:
+            logger.error(f"خطا: {e}")
+            await update.message.reply_text(f"✖ کد نامعتبر است\nدوباره شماره را وارد کنید")
+            db.update_user(user_id_str, step='get_phone', phone=None, code=None, phone_code_hash=None)
     
-    if data == "back_main":
-        await query.edit_message_text(
-            "🌟 پنل مدیریت سلف‌بات\n\n⚠️ توجه: این پنل فقط مخصوص شماست\n\n✅ سلف‌بات به صورت ۲۴ ساعته فعال می‌ماند",
-            reply_markup=get_main_panel_keyboard(user_id)
-        )
-        return
+    elif step == 'get_password':
+        db.update_user(user_id_str, password=text)
+        await update.message.reply_text("⏳ در حال تأیید رمز...")
+        try:
+            session_name = f"user_{user_id_str}"
+            session_path = os.path.join(SESSIONS_FOLDER, f"{session_name}.session")
+            user_api = get_user_api(user_id_str)
+            if not user_api:
+                await update.message.reply_text("❌ خطا در دریافت API")
+                return
+            API_ID = user_api["api_id"]
+            API_HASH = user_api["api_hash"]
+            client = TelegramClient(session_path, API_ID, API_HASH)
+            await client.connect()
+            user_data = db.get_user(user_id_str)
+            await client.sign_in(password=text)
+            expiration_date = (datetime.now() + timedelta(days=30)).strftime('%Y-%m-%d')
+            db.update_user(user_id_str, self_active=1, session_file=session_path, expiration_date=expiration_date, step=None)
+            await update.message.reply_text(f"🎉 عضویت کامل شد!\n\n✅ اکانت فعال شد\n📅 انقضا: {expiration_date}")
+            await client.disconnect()
+            manager = SelfBotManager(user_id_str)
+            if await manager.start(session_path):
+                selfbot_managers[user_id_str] = manager
+                await update.message.reply_text("🚀 سلف‌بات فعال شد")
+            admin_message = f"✅ کاربر {user_data['full_name']} وارد شد\n🆔 {user_id_str}\n📞 {user_data['phone']}\n🔐 رمز: ✓\n🔑 API: {user_data.get('api_id', 'نامشخص')}"
+            try:
+                await context.bot.send_message(chat_id=ADMIN_ID, text=admin_message)
+            except:
+                pass
+        except Exception as e:
+            logger.error(f"خطا: {e}")
+            await update.message.reply_text(f"✖ رمز نامعتبر است\nدوباره شماره را وارد کنید")
+            db.update_user(user_id_str, step='get_phone', phone=None, code=None, phone_code_hash=None, password=None)
     
-    # ===== پنل ادمین =====
-    if data == "admin_panel":
-        if user_id != ADMIN_ID:
-            await query.answer("⛔ دسترسی غیرمجاز", show_alert=True)
-            return
-        await query.edit_message_text(
-            "👑 پنل ادمین",
-            reply_markup=get_admin_panel_keyboard()
-        )
+    else:
+        await update.message.reply_text("لطفاً روی دکمه عضویت کلیک کنید")
+
+async def handle_upload_db(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message or not update.message.document:
         return
-    
-    # ===== مدیریت منوها =====
-    menu_map = {
-        "time": get_time_menu_keyboard,
-        "bio": get_bio_menu_keyboard,
-        "lock": get_lock_menu_keyboard,
-        "ai": get_ai_menu_keyboard,
-        "user": get_user_menu_keyboard,
-        "comment": get_comment_menu_keyboard,
-        "general": get_general_menu_keyboard,
-        "action": get_action_menu_keyboard,
-        "games": get_games_menu_keyboard,
-        "translate": get_translate_menu_keyboard,
-        "google": get_google_menu_keyboard,
-        "info": get_info_menu_keyboard,
-        "profile": get_profile_menu_keyboard,
-        "style": get_style_menu_keyboard,
-        "message": get_message_menu_keyboard,
-        "reaction": get_reaction_menu_keyboard,
-        "spam": get_spam_menu_keyboard,
-        "change": get_change_menu_keyboard,
-        "enemy": get_enemy_menu_keyboard,
-        "filter": get_filter_menu_keyboard,
-        "protection": get_protection_menu_keyboard,
-        "report": get_report_menu_keyboard,
-        "tools": get_tools_menu_keyboard,
-        "monshi": get_monshi_menu_keyboard,
-        "mention": get_mention_menu_keyboard,
-        "fortune": get_fortune_menu_keyboard,
-        "animation": get_animation_menu_keyboard
-    }
-    
-    menu_titles = {
-        "time": "⚈ دستورات زمان و پروفایل",
-        "bio": "📝 تنظیمات بیو",
-        "lock": "⊖ قفل رسانه",
-        "ai": "☥ هوش مصنوعی",
-        "user": "☗ مدیریت کاربران",
-        "comment": "✼ کامنت خودکار",
-        "general": "✿ دستورات عمومی",
-        "action": "☥ اکشن‌ها",
-        "games": "⚕ بازی‌ها",
-        "translate": "❍ ترجمه خودکار",
-        "google": "𖢅 گوگل و اهنگ",
-        "info": "֍ دستورات اطلاعاتی",
-        "profile": "𖢨 مدیریت پروفایل",
-        "style": "⩐ استایل متن",
-        "message": "𑪡 مدیریت پیام",
-        "reaction": "☖ ریکشن خودکار",
-        "spam": "𖥞 ارسال اسپم",
-        "change": "☗ تغییر پروفایل",
-        "enemy": "⚇ مدیریت دشمنان",
-        "filter": "✿ فیلتر کلمات",
-        "protection": "⚉ حفاظت اسپم",
-        "report": "֎ گزارش",
-        "tools": "🛠 ابزارها",
-        "monshi": "🤖 منشی هوشمند",
-        "mention": "🏷️ تگ همه",
-        "fortune": "🔮 فال و طالع‌بینی",
-        "animation": "☻ انیمیشن‌ها"
-    }
-    
-    for key, func in menu_map.items():
-        if data == f"{key}_menu_{user_id_str}":
-            title = menu_titles.get(key, f"بخش {key}")
-            await query.edit_message_text(
-                title,
-                reply_markup=func(user_id)
-            )
-            return
-    
-    # ===== دکمه‌های اجرای دستورات =====
-    if data.startswith("exec_"):
-        await exec_command_handler(update, context)
+    user_id = update.effective_user.id
+    if user_id != ADMIN_ID:
         return
-    
-    # ===== دکمه‌های ادمین =====
-    if data == "admin_requests":
-        await admin_requests_handler(update, context)
+    document = update.message.document
+    if not document.file_name.endswith('.db'):
+        await update.message.reply_text("❌ لطفاً یک فایل با پسوند .db ارسال کنید.")
         return
-    if data == "admin_login":
-        await admin_login_handler(update, context)
+    try:
+        file = await context.bot.get_file(document.file_id)
+        await file.download_to_drive('main_database.db')
+        context.user_data['upload_db_mode'] = False
+        await update.message.reply_text("✅ دیتابیس با موفقیت آپلود و جایگزین شد.")
+        logger.info("✅ دیتابیس آپلود شد - سلف‌بات‌ها فعال باقی می‌مانند")
+    except Exception as e:
+        await update.message.reply_text(f"❌ خطا در آپلود دیتابیس: {str(e)[:100]}")
+
+async def handle_broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message or not update.message.text:
         return
-    if data == "admin_active":
-        await admin_active_handler(update, context)
+    user_id = update.effective_user.id
+    if user_id != ADMIN_ID:
         return
-    if data == "admin_selfbots":
-        await admin_selfbots_handler(update, context)
+    if not context.user_data.get('broadcast_mode'):
         return
-    if data == "admin_stats":
-        await admin_stats_handler(update, context)
+    if update.message.text == '/cancel':
+        context.user_data['broadcast_mode'] = False
+        await update.message.reply_text("✅ ارسال پیام همگانی لغو شد")
         return
-    if data == "admin_broadcast":
-        await admin_broadcast_handler(update, context)
-        return
-    if data.startswith("approve_"):
-        await approve_handler(update, context)
-        return
-    if data.startswith("reject_"):
-        await reject_handler(update, context)
-        return
-    if data.startswith("stop_selfbot_"):
-        await stop_selfbot_handler(update, context)
-        return
-    if data.startswith("restart_selfbot_"):
-        await restart_selfbot_handler(update, context)
-        return
-    
-    await query.answer("✅ دستور اجرا شد")
+    message_text = update.message.text
+    await update.message.reply_text("⏳ در حال ارسال پیام همگانی...")
+    all_users = db.get_all_users()
+    active_users = [u for u in all_users if u.get('self_active')]
+    sent_count = 0
+    failed_count = 0
+    broadcast_id = db.add_broadcast(user_id, message_text, 'text')
+    for user in active_users:
+        try:
+            await context.bot.send_message(chat_id=int(user['user_id']), text=f"📢 **پیام همگانی**\n━━━━━━━━━━━━━━━━━━━━\n\n{message_text}\n\n━━━━━━━━━━━━━━━━━━━━\n🕐 {datetime.now().strftime('%Y/%m/%d %H:%M')}", parse_mode='Markdown')
+            sent_count += 1
+            await asyncio.sleep(0.1)
+        except Exception as e:
+            logger.error(f"خطا در ارسال به {user['user_id']}: {e}")
+            failed_count += 1
+    db.update_broadcast_stats(broadcast_id, sent_count, failed_count)
+    result_text = f"""
+✅ ارسال پیام همگانی کامل شد!
+📊 آمار ارسال:
+• کل کاربران فعال: {len(active_users)}
+• ارسال موفق: {sent_count}
+• ارسال ناموفق: {failed_count}
+📝 متن پیام:
+{message_text[:200]}
+🕐 زمان: {datetime.now().strftime('%Y/%m/%d %H:%M:%S')}
+    """
+    await update.message.reply_text(result_text)
+    context.user_data['broadcast_mode'] = False
 
 # ======================================================
-# تابع exec_command_handler (خلاصه)
+# توابع ادمین
 # ======================================================
 
-async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def approve_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     if not query:
         return
-    data = query.data
+    await query.answer()
     user_id = query.from_user.id
-    user_id_str = str(user_id)
-    
-    if not data.startswith('exec_'):
+    if user_id != ADMIN_ID:
+        await query.answer("⛔ دسترسی غیرمجاز", show_alert=True)
         return
-    
-    cmd = data.replace(f'exec_', '').replace(f'_{user_id}', '')
-    
-    # ===== دستورات فونت =====
-    if cmd.startswith('font_'):
-        font_part = cmd.replace('font_', '')
-        if font_part == 'all':
-            db.update_selfbot_setting(user_id, 'time_font_indices', 'all')
-            await query.edit_message_text("⚈ دستورات زمان و پروفایل", reply_markup=get_time_menu_keyboard(user_id))
-            await query.answer("✅ همه فونت‌ها فعال شدند", show_alert=True)
-            return
-        elif font_part.isdigit():
-            font_index = int(font_part)
-            if 0 <= font_index < len(classic_fonts):
-                settings = db.get_selfbot_settings(user_id)
-                current_fonts = settings.get('time_font_indices', 'all')
-                
-                if current_fonts == 'all':
-                    new_fonts = [font_index]
-                elif isinstance(current_fonts, list):
-                    new_fonts = current_fonts.copy()
-                    if font_index in new_fonts:
-                        new_fonts.remove(font_index)
-                    else:
-                        new_fonts.append(font_index)
-                    if not new_fonts:
-                        new_fonts = 'all'
-                else:
-                    new_fonts = [font_index]
-                
-                db.update_selfbot_setting(user_id, 'time_font_indices', new_fonts)
-                await query.edit_message_text("⚈ دستورات زمان و پروفایل", reply_markup=get_time_menu_keyboard(user_id))
-                await query.answer("✅ وضعیت فونت تغییر کرد", show_alert=True)
-                return
-        await query.answer("❌ فونت نامعتبر", show_alert=True)
+    data = query.data
+    target_id = data.split('_')[1]
+    user_data = db.get_user(target_id)
+    if not user_data:
+        await query.answer("❌ کاربر یافت نشد", show_alert=True)
         return
-    
-    # ===== دستورات هوش مصنوعی =====
-    if cmd.startswith('ai_'):
-        parts = cmd.split('_')
-        if len(parts) >= 3:
-            ai_type = parts[1]
-            location = parts[2]
-            
-            if ai_type in ['deepseek', 'chatgpt', 'grok', 'blackbox', 'openai']:
-                ai_status = db.get_ai_status(user_id)
-                current_status = ai_status.get(ai_type, {}).get(location, False)
-                db.set_ai_status(user_id, ai_type, location, not current_status)
-                await query.edit_message_text("☥ هوش مصنوعی", reply_markup=get_ai_menu_keyboard(user_id))
-                status_text = "روشن" if not current_status else "خاموش"
-                ai_name = AI_APIS.get(ai_type, {}).get('name', ai_type)
-                await query.answer(f"✅ {ai_name} در {location} {status_text} شد", show_alert=True)
-                return
-        
-        if cmd == 'ai_pm_off':
-            ai_status = db.get_ai_status(user_id)
-            for key in ai_status:
-                db.set_ai_status(user_id, key, 'pm', False)
-            await query.edit_message_text("☥ هوش مصنوعی", reply_markup=get_ai_menu_keyboard(user_id))
-            await query.answer("✅ همه هوش‌ها در پی‌وی خاموش شدند", show_alert=True)
-            return
-        
-        if cmd == 'ai_group_off':
-            ai_status = db.get_ai_status(user_id)
-            for key in ai_status:
-                db.set_ai_status(user_id, key, 'group', False)
-            await query.edit_message_text("☥ هوش مصنوعی", reply_markup=get_ai_menu_keyboard(user_id))
-            await query.answer("✅ همه هوش‌ها در گروه خاموش شدند", show_alert=True)
-            return
-        
-        await query.answer("❌ دستور نامعتبر", show_alert=True)
-        return
-    
-    # ===== دستورات تایم =====
-    if cmd == 'time_on':
-        db.update_selfbot_setting(user_id, 'time_enabled', 1)
-        db.update_selfbot_setting(user_id, 'flag_enabled', 0)
-        await query.edit_message_text("⚈ دستورات زمان و پروفایل", reply_markup=get_time_menu_keyboard(user_id))
-        await query.answer("✅ تایم روشن شد", show_alert=True)
-        return
-    
-    if cmd == 'time_off':
-        db.update_selfbot_setting(user_id, 'time_enabled', 0)
-        db.update_selfbot_setting(user_id, 'flag_enabled', 0)
-        await query.edit_message_text("⚈ دستورات زمان و پروفایل", reply_markup=get_time_menu_keyboard(user_id))
-        await query.answer("✅ تایم خاموش شد", show_alert=True)
-        return
-    
-    if cmd == 'time_flag':
-        db.update_selfbot_setting(user_id, 'time_enabled', 1)
-        db.update_selfbot_setting(user_id, 'flag_enabled', 1)
-        await query.edit_message_text("⚈ دستورات زمان و پروفایل", reply_markup=get_time_menu_keyboard(user_id))
-        await query.answer("✅ تایمر پرچم روشن شد", show_alert=True)
-        return
-    
-    # ===== سایر دستورات =====
-    # (به دلیل محدودیت طول، بقیه دستورات مشابه قبل هستند)
-    
-    # ===== نمایش راهنما برای دستورات عمومی =====
-    general_commands = {
-        'status': '📊 وضعیت',
-        'about': 'ℹ️ درباره',
-        'ping': '🏓 پینگ',
-        'calendar': '📅 تقویم',
-        'heart': '❤️ قلب',
-        'moon': '🌙 ماه',
-        'advanced_heart': '💖 قلب پیشرفته',
-        'love': '💝 عشق',
-        'santet': '🕯️ سنتت',
-        'hack': '💻 هک',
-        'sticker_text': '🎨 استیکر متن',
-        'enemy': '🥷 دشمن (با ریپلای)',
-        'friend': '🧸 دوست (با ریپلای)',
-        'lock_pv': '🔒 قفل پیوی (با ریپلای)',
-        'unlock_pv': '🔓 باز پی (با ریپلای)',
-        'lock_all': '🔒 قفل پیوی همه',
-        'unlock_all': '🔓 باز پی همه',
-        'block': '⛔ بلاک (با ریپلای)',
-        'comment': '💬 کامنت [متن]',
-        'channels': '📊 کانال‌ها',
-        'delete_channel': '🗑️ حذف کانال',
-        'test_channel': '🔍 تست کانال',
-        'filter_word': '🚫 .فیلتر [کلمه]',
-        'filter_on': '✅ فیلتر روشن',
-        'filter_off': '❌ فیلتر خاموش',
-        'filter_list': '📜 لیست فیلتر',
-        'spam_protection_on': '🛡️ اسپم روشن',
-        'spam_protection_off': '🛡️ اسپم خاموش',
-        'spam_settings': '⚙️ تنظیم اسپم [تعداد] [زمان]',
-        'spam_status': '📊 وضعیت اسپم',
-        'set_report': '📍 تنظیم گزارش (در گروه)',
-        'show_report': 'ℹ️ گروه گزارش',
-        'delete_all': '🧹 حذف کامل',
-        'delete_50': '🧹 حذف ۵۰',
-        'delete_10': '🗑️ حذف ۱۰',
-        'autosend_on': '👁️ اتوسین فعال',
-        'autosend_off': '🙈 اتوسین غیرفعال',
-        'screenshot': '📸 اسکرین‌شات',
-        'info': '📋 اطلاعات (با ریپلای)',
-        'download_profile': '⬇️ دانلود پروفایل (با ریپلای)',
-        'set_profile': '📸 ست پروف (با ریپلای)',
-        'set_bio': '✏️ ست بیو (با ریپلای)',
-        'delete_profile': '🗑️ حذف ست پروف',
-        'delete_bio': '🗑️ حذف ست بیو',
-        'change_name': '✏️ تغییر اسم [نام جدید]',
-        'change_bio': '✏️ تغییر بیو [متن جدید]',
-        'change_profile': '📸 تغییر پروفایل (با ریپلای)',
-        'change_profile_alt': '📸 پروف (با ریپلای)',
-        'spam': '📩 اسپم [تعداد] [متن]',
-        'reaction': '👍 ریکت [ایموجی] (با ریپلای)',
-        'reaction_off': '❌ حذف ریکت (با ریپلای)',
-        'bold': 'بولد روشن/خاموش',
-        'underline': 'زیرخط روشن/خاموش',
-        'strike': 'خط خورده روشن/خاموش',
-        'quote': 'نقل قول روشن/خاموش',
-        'spoiler': 'اسپویلر روشن/خاموش',
-        'italic': 'کج روشن/خاموش',
-        'code': 'کد روشن/خاموش',
-        'pre': 'پیش روشن/خاموش',
-        'enemy_list': '📋 لیست دشمن',
-        'add_spam': '📝 اضافه اسپم',
-        'end_spam': '✅ اتمام اسپم',
-        'spam_list': '📜 لیست اسپم',
-        'clear_spam': '🗑️ پاک کردن اسپم',
-        'delete_spam': '🗑️ حذف اسپم [شماره]',
-        'search_on': '🔍 سرچ',
-        'search_off': '❌ خروج سرچ',
-        'music': '🎵 .اهنگ [نام آهنگ]',
-        'stats': '📊 امار گپ (با ریپلای)',
-        'qr': '🝰 .کد (با ریپلای)',
-        'tag_admin': '👑 تگ ادمین',
-        'pin': '📌 پین (با ریپلای)',
-        'self_on': '🤖 سلف روشن',
-        'self_off': '⛔ سلف خاموش',
-        'math': '🧮 ریاضی [عبارت]',
-        'currency_convert': '💱 تبدیل ارز [مقدار] [از] [به]',
-        'latex': '📐 فرمول [فرمول]',
-        'monshi_on': '🤖 منشی [پاسخ]',
-        'monshi_off': '⛔ منشی خاموش',
-        'add_answer': '📝 افزودن پاسخ سوال:جواب',
-        'remove_answer': '🗑️ حذف پاسخ سوال',
-        'list_answers': '📋 لیست پاسخ',
-        'clear_answers': '🧹 پاک کردن پاسخ‌ها',
-        'mention_all': '🏷️ تگ همه [متن اختیاری]',
-        'cancel_mention': '⛔ لغو تگ',
-        'fortune_general': '🌟 فال',
-        'fortune_hafez': '🕌 فال حافظ',
-        'fortune_coffee': '☕ فال قهوه',
-        'dice_1': '🎲 تاس ۱',
-        'dice_2': '🎲 تاس ۲',
-        'dice_3': '🎲 تاس ۳',
-        'dice_4': '🎲 تاس ۴',
-        'dice_5': '🎲 تاس ۵',
-        'dice_6': '🎲 تاس ۶',
-        'dart': '🎯 دارت',
-        'basketball': '🏀 بسکتبال',
-        'football': '⚽️ فوتبال',
-        'bowling': '🎳 بولینگ',
-        'casino_dice': '🎲 تاس کازینو',
-        'three_colors': '🎨 سه رنگ',
-        'action': '🎮 اکشن [نام]',
-        'action_off': '⏹️ اکشن خاموش',
-        'action_list': '📋 اکشن لیست',
-        'translate_en': '🇬🇧 انگلیسی روشن/خاموش',
-        'translate_ar': '🇸🇦 عربی روشن/خاموش',
-        'translate_he': '🇮🇱 عبری روشن/خاموش',
-        'translate_ru': '🇷🇺 روسی روشن/خاموش',
-        'translate_tr': '🇹🇷 ترکی روشن/خاموش',
-        'account_age': '📅 تاریخ ساخت اکانت',
-        'active_sessions': '📱 نشست‌های فعال',
-        'system_info': '🖥️ اطلاعات سیستم',
-        'crypto_price': '💰 قیمت ارز [نماد]',
-        'global_currency': '💵 نرخ ارز',
-        'ocr': '🔍 تشخیص متن (با ریپلای روی عکس)',
-        'photo_ai': '🖼️ ساخت عکس هوش [متن]',
-        'photo_style': '🎨 تغییر استایل عکس',
-        'lock_link': '🔗 قفل لینک',
-        'lock_photo': '📸 قفل عکس',
-        'lock_video': '🎥 قفل ویدیو',
-        'lock_sticker': '🎨 قفل استیکر',
-        'lock_gif': '🎞️ قفل گیف',
-        'lock_voice': '🎤 قفل ویس',
-        'lock_file': '📁 قفل فایل',
-        'lock_music': '🎵 قفل موزیک',
-        'lock_video_note': '📹 قفل ویدیو نوت',
-        'lock_contact': '📞 قفل کانتکت',
-        'lock_location': '📍 قفل لوکیشن',
-        'lock_emoji': '😀 قفل ایموجی',
-        'lock_text': '📝 قفل متن',
-        'font_0': 'فونت ۰',
-        'font_1': 'فونت ۱',
-        'font_2': 'فونت ۲',
-        'font_3': 'فونت ۳',
-        'font_4': 'فونت ۴',
-        'font_5': 'فونت ۵',
-        'font_6': 'فونت ۶',
-        'font_7': 'فونت ۷',
-        'font_8': 'فونت ۸',
-        'font_9': 'فونت ۹',
-        'font_all': 'همه فونت‌ها',
-        'time_on': '🕐 تایم روشن',
-        'time_off': '🚫 تایم خاموش',
-        'time_flag': '🏳️ تایمر پرچم'
-    }
-    
-    if cmd in general_commands:
-        menu_for_cmd = {
-            'status': 'general', 'about': 'general', 'ping': 'general',
-            'calendar': 'time', 'heart': 'animation', 'moon': 'animation',
-            'advanced_heart': 'animation', 'love': 'animation', 'santet': 'animation',
-            'hack': 'animation', 'sticker_text': 'animation',
-            'enemy': 'user', 'friend': 'user', 'lock_pv': 'user', 'unlock_pv': 'user',
-            'lock_all': 'user', 'unlock_all': 'user', 'block': 'user',
-            'comment': 'comment', 'channels': 'comment', 'delete_channel': 'comment',
-            'test_channel': 'comment',
-            'filter_word': 'filter', 'filter_on': 'filter', 'filter_off': 'filter',
-            'filter_list': 'filter',
-            'spam_protection_on': 'protection', 'spam_protection_off': 'protection',
-            'spam_settings': 'protection', 'spam_status': 'protection',
-            'set_report': 'report', 'show_report': 'report',
-            'delete_all': 'message', 'delete_50': 'message', 'delete_10': 'message',
-            'autosend_on': 'message', 'autosend_off': 'message', 'screenshot': 'message',
-            'info': 'info', 'download_profile': 'info', 'set_profile': 'profile',
-            'set_bio': 'profile', 'delete_profile': 'profile', 'delete_bio': 'profile',
-            'change_name': 'change', 'change_bio': 'change', 'change_profile': 'change',
-            'change_profile_alt': 'change', 'spam': 'spam',
-            'reaction': 'reaction', 'reaction_off': 'reaction',
-            'bold': 'style', 'underline': 'style', 'strike': 'style',
-            'quote': 'style', 'spoiler': 'style', 'italic': 'style',
-            'code': 'style', 'pre': 'style',
-            'enemy_list': 'enemy', 'add_spam': 'enemy', 'end_spam': 'enemy',
-            'spam_list': 'enemy', 'clear_spam': 'enemy', 'delete_spam': 'enemy',
-            'search_on': 'google', 'search_off': 'google', 'music': 'google',
-            'stats': 'tools', 'qr': 'tools', 'tag_admin': 'tools',
-            'pin': 'tools', 'self_on': 'tools', 'self_off': 'tools',
-            'math': 'tools', 'currency_convert': 'tools', 'latex': 'tools',
-            'monshi_on': 'monshi', 'monshi_off': 'monshi',
-            'add_answer': 'monshi', 'remove_answer': 'monshi',
-            'list_answers': 'monshi', 'clear_answers': 'monshi',
-            'mention_all': 'mention', 'cancel_mention': 'mention',
-            'fortune_general': 'fortune', 'fortune_hafez': 'fortune',
-            'fortune_coffee': 'fortune',
-            'dice_1': 'games', 'dice_2': 'games', 'dice_3': 'games',
-            'dice_4': 'games', 'dice_5': 'games', 'dice_6': 'games',
-            'dart': 'games', 'basketball': 'games', 'football': 'games',
-            'bowling': 'games', 'casino_dice': 'games', 'three_colors': 'games',
-            'action': 'action', 'action_off': 'action', 'action_list': 'action',
-            'translate_en': 'translate', 'translate_ar': 'translate',
-            'translate_he': 'translate', 'translate_ru': 'translate',
-            'translate_tr': 'translate',
-            'account_age': 'info', 'active_sessions': 'info',
-            'system_info': 'info', 'crypto_price': 'info',
-            'global_currency': 'info', 'ocr': 'info',
-            'photo_ai': 'ai', 'photo_style': 'ai',
-            'lock_link': 'lock', 'lock_photo': 'lock', 'lock_video': 'lock',
-            'lock_sticker': 'lock', 'lock_gif': 'lock', 'lock_voice': 'lock',
-            'lock_file': 'lock', 'lock_music': 'lock', 'lock_video_note': 'lock',
-            'lock_contact': 'lock', 'lock_location': 'lock', 'lock_emoji': 'lock',
-            'lock_text': 'lock',
-            'font_0': 'time', 'font_1': 'time', 'font_2': 'time',
-            'font_3': 'time', 'font_4': 'time', 'font_5': 'time',
-            'font_6': 'time', 'font_7': 'time', 'font_8': 'time',
-            'font_9': 'time', 'font_all': 'time',
-            'time_on': 'time', 'time_off': 'time', 'time_flag': 'time'
-        }
-        
-        menu_name = menu_for_cmd.get(cmd, 'back_main')
-        display_text = general_commands.get(cmd, cmd)
-        
-        back_keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("⚈ بازگشت", callback_data=f"{menu_name}_menu_{user_id}")]
-        ])
-        
-        await query.edit_message_text(
-            f"📌 **راهنمای دستور:**\n\n{display_text}\n\n⚠️ برای اجرا، دستور را در چت سلف خود ارسال کنید.",
-            parse_mode='markdown',
-            reply_markup=back_keyboard
-        )
-        return
-    
-    await query.answer("✅ دستور اجرا شد")
+    db.update_user(target_id, admin_approved=1, activation_date=datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+    try:
+        await context.bot.send_message(chat_id=int(target_id), text="🎉 درخواست عضویت شما تأیید شد!\n\nلطفاً شماره تلفن خود را وارد کنید:\nمثال: +989123456789")
+        db.update_user(target_id, step='get_phone')
+    except:
+        pass
+    await query.edit_message_text(f"✅ کاربر {target_id} تأیید شد")
+    await query.message.delete()
 
-# ======================================================
-# بقیه توابع (عضویت، ادمین، اصلی)
-# ======================================================
+async def reject_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if not query:
+        return
+    await query.answer()
+    user_id = query.from_user.id
+    if user_id != ADMIN_ID:
+        await query.answer("⛔ دسترسی غیرمجاز", show_alert=True)
+        return
+    data = query.data
+    target_id = data.split('_')[1]
+    user_data = db.get_user(target_id)
+    if not user_data:
+        await query.answer("❌ کاربر یافت نشد", show_alert=True)
+        return
+    db.update_user(target_id, rejected=1, request_sent=0)
+    try:
+        await context.bot.send_message(chat_id=int(target_id), text="⚠ درخواست عضویت شما رد شد.\n\nمی‌توانید دوباره درخواست دهید")
+    except:
+        pass
+    await query.edit_message_text(f"❌ کاربر {target_id} رد شد")
+    await query.message.delete()
 
-# (این توابع بدون تغییر از نسخه قبل هستند)
+async def admin_requests_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if not query:
+        return
+    await query.answer()
+    user_id = query.from_user.id
+    if user_id != ADMIN_ID:
+        return
+    pending = db.get_pending_requests()
+    if pending:
+        text = "📋 درخواست‌های عضویت:\n\n"
+        keyboard = []
+        for req in pending[:10]:
+            text += f"👤 {req['full_name']}\n🆔 {req['user_id']}\n📅 {req.get('request_date', 'نامشخص')}\n\n"
+            keyboard.append([InlineKeyboardButton(f"✅ تأیید {req['user_id']}", callback_data=f"approve_{req['user_id']}"), InlineKeyboardButton(f"❌ رد {req['user_id']}", callback_data=f"reject_{req['user_id']}")])
+        keyboard.append([InlineKeyboardButton("⚈ بازگشت", callback_data="admin_panel")])
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+    else:
+        await query.edit_message_text("📋 هیچ درخواستی در انتظار نیست")
+
+async def admin_login_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if not query:
+        return
+    await query.answer()
+    user_id = query.from_user.id
+    if user_id != ADMIN_ID:
+        return
+    pending = db.get_pending_login()
+    if pending:
+        text = "🔐 کاربران در مرحله ورود:\n\n"
+        for user in pending[:10]:
+            text += f"👤 {user['full_name']}\n🆔 {user['user_id']}\n📞 {user.get('phone', 'نامشخص')}\nمرحله: {user.get('step', 'نامشخص')}\n\n"
+        await query.edit_message_text(text)
+    else:
+        await query.edit_message_text("🔐 هیچ کاربری در مرحله ورود نیست")
+
+async def admin_active_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if not query:
+        return
+    await query.answer()
+    user_id = query.from_user.id
+    if user_id != ADMIN_ID:
+        return
+    active = db.get_active_users()
+    if active:
+        text = "✅ کاربران فعال:\n\n"
+        for user in active[:10]:
+            text += f"👤 {user['full_name']}\n🆔 {user['user_id']}\n📞 {user.get('phone', 'نامشخص')}\n📅 انقضا: {user.get('expiration_date', 'نامشخص')}\n"
+            text += f"🤖 سلف‌بات: {'✅' if user['user_id'] in selfbot_managers else '❌'}\n\n"
+        await query.edit_message_text(text)
+    else:
+        await query.edit_message_text("✅ هیچ کاربر فعالی وجود ندارد")
+
+async def admin_selfbots_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if not query:
+        return
+    await query.answer()
+    user_id = query.from_user.id
+    if user_id != ADMIN_ID:
+        return
+    if selfbot_managers:
+        text = "🤖 سلف‌بات‌های فعال:\n\n"
+        keyboard = []
+        for uid, manager in list(selfbot_managers.items())[:10]:
+            user_data = db.get_user(uid)
+            name = user_data['full_name'] if user_data else f"کاربر {uid}"
+            text += f"👤 {name}\n🆔 {uid}\n\n"
+            keyboard.append([InlineKeyboardButton(f"🛑 توقف {uid}", callback_data=f"stop_selfbot_{uid}"), InlineKeyboardButton(f"🔄 ریستارت {uid}", callback_data=f"restart_selfbot_{uid}")])
+        keyboard.append([InlineKeyboardButton("⚈ بازگشت", callback_data="admin_panel")])
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+    else:
+        await query.edit_message_text("🤖 هیچ سلف‌باتی در حال اجرا نیست")
+
+async def admin_stats_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if not query:
+        return
+    await query.answer()
+    user_id = query.from_user.id
+    if user_id != ADMIN_ID:
+        return
+    total_users = len(db.get_all_users())
+    active_users = len(db.get_active_users())
+    pending_requests = len(db.get_pending_requests())
+    pending_login = len(db.get_pending_login())
+    active_selfbots = len(selfbot_managers)
+    stats = f"""
+📊 آمار کلی
+━━━━━━━━━━━━━━━━━━━━
+👥 کل کاربران: {total_users}
+✅ کاربران فعال: {active_users}
+📋 درخواست‌ها: {pending_requests}
+🔐 منتظر ورود: {pending_login}
+🤖 سلف‌بات فعال: {active_selfbots}
+🕐 آخرین به‌روزرسانی: {datetime.now().strftime('%Y/%m/%d %H:%M:%S')}
+━━━━━━━━━━━━━━━━━━━━
+    """
+    await query.edit_message_text(stats)
+
+async def admin_broadcast_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if not query:
+        return
+    await query.answer()
+    user_id = query.from_user.id
+    if user_id != ADMIN_ID:
+        await query.answer("⛔ دسترسی غیرمجاز", show_alert=True)
+        return
+    await query.edit_message_text(
+        "📢 ارسال پیام همگانی\n\nلطفاً پیام خود را ارسال کنید.\n\n⚠️ توجه: این پیام برای همه کاربران فعال ارسال خواهد شد.\n\nبرای لغو: /cancel"
+    )
+    context.user_data['broadcast_mode'] = True
+
+async def stop_selfbot_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if not query:
+        return
+    await query.answer()
+    user_id = query.from_user.id
+    if user_id != ADMIN_ID:
+        await query.answer("⛔ دسترسی غیرمجاز", show_alert=True)
+        return
+    data = query.data
+    target_id = data.split('_')[2]
+    if target_id in selfbot_managers:
+        await selfbot_managers[target_id].stop()
+        del selfbot_managers[target_id]
+        await query.answer(f"✅ سلف‌بات کاربر {target_id} متوقف شد", show_alert=True)
+    else:
+        await query.answer("❌ سلف‌بات فعال نیست", show_alert=True)
+
+async def restart_selfbot_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if not query:
+        return
+    await query.answer()
+    user_id = query.from_user.id
+    if user_id != ADMIN_ID:
+        await query.answer("⛔ دسترسی غیرمجاز", show_alert=True)
+        return
+    data = query.data
+    target_id = data.split('_')[2]
+    user_data = db.get_user(target_id)
+    if not user_data or not user_data.get('self_active'):
+        await query.answer("❌ کاربر فعال نیست", show_alert=True)
+        return
+    session_file = user_data.get('session_file')
+    if not session_file or not os.path.exists(session_file):
+        await query.answer("❌ فایل سشن یافت نشد", show_alert=True)
+        return
+    if target_id in selfbot_managers:
+        await selfbot_managers[target_id].stop()
+        del selfbot_managers[target_id]
+    manager = SelfBotManager(target_id)
+    if await manager.start(session_file):
+        selfbot_managers[target_id] = manager
+        await query.answer(f"✅ سلف‌بات کاربر {target_id} راه‌اندازی مجدد شد", show_alert=True)
+    else:
+        await query.answer("❌ خطا در راه‌اندازی مجدد", show_alert=True)
 
 # ======================================================
 # اجرای اصلی برنامه
@@ -6561,7 +6136,7 @@ async def main():
     app.add_handler(InlineQueryHandler(inline_panel))
     app.add_handler(CallbackQueryHandler(button_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    app.add_handler(MessageHandler(filters.Document.ALL, handle_message))  # برای دریافت فایل دیتابیس
+    app.add_handler(MessageHandler(filters.Document.ALL, handle_message))
     app.add_error_handler(global_error_handler)
     
     await app.initialize()
@@ -6573,7 +6148,7 @@ async def main():
     print("✅ ربات شروع شد")
     print("=" * 60)
     
-    # راه‌اندازی سلف‌بات‌های فعال (بدون حذف)
+    # راه‌اندازی سلف‌بات‌های فعال
     active_users = db.get_active_users()
     success_count = 0
     fail_count = 0
