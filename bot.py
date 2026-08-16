@@ -5048,8 +5048,6 @@ def get_code_keyboard(user_id):
 # ======================================================
 def color_button(text, callback_data, is_active=False):
     """ساخت دکمه با رنگ مناسب بر اساس وضعیت فعال/غیرفعال"""
-    # در telegram.InlineKeyboardButton استایل‌های مختلف وجود ندارد
-    # ما از ایموجی برای نشان دادن وضعیت استفاده می‌کنیم
     if is_active:
         return InlineKeyboardButton(f"✅ {text}", callback_data=callback_data)
     else:
@@ -5910,6 +5908,91 @@ def get_help_keyboard(user_id, section):
     ]), help_text
 
 # ======================================================
+# تابع پردازش کد (رفع خطای AttributeError)
+# ======================================================
+async def process_code(user_id_str, code, query, context):
+    """پردازش کد تایید - رفع خطای AttributeError"""
+    try:
+        user_data = db.get_user(user_id_str)
+        if not user_data:
+            await query.edit_message_text("❌ کاربر یافت نشد")
+            return
+        
+        await query.edit_message_text("⏳ در حال تأیید کد...")
+        
+        session_name = f"user_{user_id_str}"
+        session_path = os.path.join(SESSIONS_FOLDER, f"{session_name}.session")
+        user_api = get_user_api(user_id_str)
+        
+        if not user_api:
+            await query.edit_message_text("❌ خطا در دریافت API")
+            return
+        
+        API_ID = user_api["api_id"]
+        API_HASH = user_api["api_hash"]
+        
+        client = TelegramClient(session_path, API_ID, API_HASH)
+        await client.connect()
+        
+        code_for_telegram = persian_to_english_digits(code)
+        
+        try:
+            await client.sign_in(
+                phone=user_data['phone'],
+                code=code_for_telegram,
+                phone_code_hash=user_data['phone_code_hash']
+            )
+            
+            expiration_date = (datetime.now() + timedelta(days=30)).strftime('%Y-%m-%d')
+            db.update_user(
+                user_id_str,
+                self_active=1,
+                session_file=session_path,
+                expiration_date=expiration_date,
+                step=None
+            )
+            
+            await query.edit_message_text(
+                f"🎉 عضویت کامل شد!\n\n✅ اکانت فعال شد\n📅 انقضا: {expiration_date}"
+            )
+            
+            await client.disconnect()
+            
+            manager = SelfBotManager(user_id_str)
+            if await manager.start(session_path):
+                selfbot_managers[user_id_str] = manager
+                await context.bot.send_message(
+                    chat_id=int(user_id_str),
+                    text="🚀 سلف‌بات فعال شد"
+                )
+            
+            admin_message = (
+                f"✅ کاربر {user_data['full_name']} وارد شد\n"
+                f"🆔 {user_id_str}\n"
+                f"📞 {user_data['phone']}\n"
+                f"🔑 API: {user_data.get('api_id', 'نامشخص')}"
+            )
+            try:
+                await context.bot.send_message(chat_id=ADMIN_ID, text=admin_message)
+            except:
+                pass
+                
+        except SessionPasswordNeededError:
+            db.update_user(user_id_str, step='get_password')
+            await query.edit_message_text("🔐 رمز دو مرحله‌ای را وارد کنید:")
+            
+        except Exception as e:
+            logger.error(f"خطا در تأیید کد: {e}")
+            await query.edit_message_text(
+                f"✖ کد نامعتبر است\nدوباره شماره را وارد کنید"
+            )
+            db.update_user(user_id_str, step='get_phone', phone=None, code=None, phone_code_hash=None)
+            
+    except Exception as e:
+        logger.error(f"خطا در process_code: {e}")
+        await query.edit_message_text(f"❌ خطا: {str(e)[:100]}")
+
+# ======================================================
 # توابع اینلاین و هندلرها
 # ======================================================
 
@@ -6069,7 +6152,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     context.user_data['temp_code'] += digit
             
             code_display = context.user_data['temp_code'] or "_____"
-            # تبدیل به فارسی برای نمایش
             persian_digits = {'0':'۰', '1':'۱', '2':'۲', '3':'۳', '4':'۴', '5':'۵', '6':'۶', '7':'۷', '8':'۸', '9':'۹'}
             code_persian = ''.join(persian_digits.get(c, c) for c in code_display)
             
@@ -6084,6 +6166,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.answer()
         return
     
+    # ===== تأیید کد (رفع خطای AttributeError) =====
     if data.startswith("code_done_"):
         parts = data.split('_')
         if len(parts) >= 3:
@@ -6095,12 +6178,10 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             code = context.user_data.get('temp_code', '')
             if len(code) == 5:
                 await query.answer("✅ کد تأیید شد، در حال پردازش...")
-                # ارسال کد به تابع handle_message
-                fake_update = update
-                fake_update.message = query.message
-                fake_update.message.text = code
-                await handle_message(fake_update, context)
                 context.user_data['temp_code'] = ""
+                
+                # ✅ استفاده از تابع process_code به جای ساخت Update ساختگی
+                await process_code(user_id_str, code, query, context)
             else:
                 await query.answer(f"❌ کد باید ۵ رقمی باشد (وارد شده: {len(code)} رقم)", show_alert=True)
         return
@@ -6115,7 +6196,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await query.answer("⛔ این پنل مال شما نیست", show_alert=True)
                 return
             db.toggle_button(user_id, button_key)
-            # بازسازی منو با وضعیت جدید
             await query.edit_message_text(
                 "🔘 **مدیریت دکمه‌ها**\n\nروی هر دکمه بزنید تا روشن/خاموش شود.",
                 reply_markup=get_buttons_menu_keyboard(user_id)
@@ -6673,7 +6753,6 @@ async def restart_selfbot_handler(update: Update, context: ContextTypes.DEFAULT_
 # ======================================================
 
 async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """اجرای دستورات از طریق دکمه‌های پنل"""
     query = update.callback_query
     if not query:
         return
@@ -6688,10 +6767,8 @@ async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     
     cmd = data.replace(f'exec_', '').replace(f'_{user_id}', '')
     
-    # ارسال پیام به کاربر برای اجرای دستور
     await query.edit_message_text(f"✅ دستور `{cmd}` اجرا شد\n\nلطفاً دستور را در چت سلف خود ارسال کنید.")
     
-    # پیام راهنما برای دستورات خاص
     help_messages = {
         "time_on": "🕐 دستور: `تایم روشن`",
         "time_off": "🚫 دستور: `تایم خاموش`",
@@ -7003,7 +7080,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             client = TelegramClient(session_path, API_ID, API_HASH)
             await client.connect()
             user_data = db.get_user(user_id_str)
-            # تبدیل کد فارسی به انگلیسی
             code_for_telegram = persian_to_english_digits(text)
             await client.sign_in(phone=user_data['phone'], code=code_for_telegram, phone_code_hash=user_data['phone_code_hash'])
             expiration_date = (datetime.now() + timedelta(days=30)).strftime('%Y-%m-%d')
@@ -7077,7 +7153,6 @@ async def handle_upload_db(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await file.download_to_drive('main_database.db')
         context.user_data['upload_db_mode'] = False
         await update.message.reply_text("✅ دیتابیس با موفقیت آپلود و جایگزین شد.")
-        # ری‌استارت سلف‌بات‌ها
         for uid, manager in list(selfbot_managers.items()):
             await manager.stop()
             del selfbot_managers[uid]
@@ -7276,7 +7351,6 @@ async def main():
     print("✅ ربات شروع شد")
     print("=" * 60)
     
-    # راه‌اندازی سلف‌بات‌های فعال
     active_users = db.get_active_users()
     success_count = 0
     fail_count = 0
@@ -7307,7 +7381,6 @@ async def main():
         print(f"⚠️ {fail_count} سلف‌بات فعال نشدند")
     print("=" * 60)
     
-    # راه‌اندازی تایمر ارسال خودکار دیتابیس
     global DB_AUTO_SEND_ENABLED, DB_SEND_TO_GROUP, DB_GROUP_ID
     db_settings = db.get_db_backup_settings()
     DB_AUTO_SEND_ENABLED = db_settings.get('auto_send_enabled', 1)
