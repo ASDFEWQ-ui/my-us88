@@ -227,6 +227,41 @@ MARKET_APIS = {
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+
+# ======================================================
+# تابع ویرایش امن پیام (عادی + اینلاین)
+# ======================================================
+async def safe_edit(query, text=None, reply_markup=None, parse_mode=None):
+    """ویرایش امن پیام برای هر دو حالت عادی و اینلاین"""
+    try:
+        bot = query.get_bot()
+        if query.message is not None:
+            if text is not None:
+                await query.edit_message_text(
+                    text=text,
+                    reply_markup=reply_markup,
+                    parse_mode=parse_mode
+                )
+            elif reply_markup is not None:
+                await query.edit_message_reply_markup(reply_markup=reply_markup)
+        else:
+            # پیام اینلاین
+            if text is not None:
+                await bot.edit_message_text(
+                    text=text,
+                    inline_message_id=query.inline_message_id,
+                    reply_markup=reply_markup,
+                    parse_mode=parse_mode
+                )
+            elif reply_markup is not None:
+                await bot.edit_message_reply_markup(
+                    inline_message_id=query.inline_message_id,
+                    reply_markup=reply_markup
+                )
+    except Exception as e:
+        logger.error(f"safe_edit error: {e}")
+
+
 # ======================================================
 # تنظیمات اولیه
 # ======================================================
@@ -5484,7 +5519,11 @@ async def approve_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except:
         pass
     await query.edit_message_text(f"✅ کاربر {target_id} تأیید شد")
-    await query.message.delete()
+    try:
+        if query.message:
+            await query.message.delete()
+    except:
+        pass
 
 async def reject_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -5507,7 +5546,11 @@ async def reject_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except:
         pass
     await query.edit_message_text(f"❌ کاربر {target_id} رد شد")
-    await query.message.delete()
+    try:
+        if query.message:
+            await query.message.delete()
+    except:
+        pass
 
 async def stop_selfbot_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -5579,15 +5622,21 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # ========== دکمه‌های اصلی ==========
     if data == "back_main":
-        await query.edit_message_text("🌟 پنل مدیریت سلف‌بات\n\n⚠️ توجه: این پنل فقط مخصوص شماست\n\n✅ سلف‌بات به صورت ۲۴ ساعته فعال می‌ماند", reply_markup=get_main_panel_keyboard(user_id))
+        await safe_edit(query, "🌟 پنل مدیریت سلف‌بات\n\n⚠️ توجه: این پنل فقط مخصوص شماست\n\n✅ سلف‌بات به صورت ۲۴ ساعته فعال می‌ماند", get_main_panel_keyboard(user_id))
         return
     
     if data == "close_panel_":
         await query.answer("❌ بستن پنل")
         try:
-            await query.message.delete()
+            if query.message:
+                await query.message.delete()
+            else:
+                await safe_edit(query, "✅ پنل بسته شد")
         except:
-            await query.edit_message_text("✅ پنل بسته شد")
+            try:
+                await safe_edit(query, "✅ پنل بسته شد")
+            except:
+                pass
         return
     
     # ========== منوهای ادمین ==========
@@ -5641,31 +5690,31 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # ========== دکمه‌های منوها ==========
     if data.startswith("time_menu_"):
-        await query.edit_message_text("⚈ **زمان و پروفایل**\n\nمدیریت زمان، پرچم، بیو و تقویم", reply_markup=get_time_menu_keyboard(user_id))
+        await safe_edit(query, "⚈ **زمان و پروفایل**\n\nمدیریت زمان، پرچم، بیو و تقویم", get_time_menu_keyboard(user_id))
         return
     
     if data.startswith("font_menu_"):
-        await query.edit_message_text("🎨 **انتخاب فونت تایم**\n\nفونت مورد نظر خود را انتخاب کنید:", reply_markup=get_font_menu_keyboard(user_id))
+        await safe_edit(query, "🎨 **انتخاب فونت تایم**\n\nفونت مورد نظر خود را انتخاب کنید:", get_font_menu_keyboard(user_id))
         return
     
     if data.startswith("flagselect_menu_"):
-        await query.edit_message_text("🏳️ **انتخاب پرچم**\n\nپرچم مورد نظر خود را انتخاب کنید:", reply_markup=get_flagselect_menu_keyboard(user_id))
+        await safe_edit(query, "🏳️ **انتخاب پرچم**\n\nپرچم مورد نظر خود را انتخاب کنید:", get_flagselect_menu_keyboard(user_id))
         return
     
     if data.startswith("photo_menu_"):
-        await query.edit_message_text("🎨 **لوگو و عکس**\n\nساخت عکس با هوش، تبدیل به جیبلی و لوگو ساز", reply_markup=get_photo_menu_keyboard(user_id))
+        await safe_edit(query, "🎨 **لوگو و عکس**\n\nساخت عکس با هوش، تبدیل به جیبلی و لوگو ساز", get_photo_menu_keyboard(user_id))
         return
     
     if data.startswith("market_menu_"):
-        await query.edit_message_text("💰 **ارز و بازار**\n\nارزهای دیجیتال، طلا، بورس و نرخ ارز", reply_markup=get_market_menu_keyboard(user_id))
+        await safe_edit(query, "💰 **ارز و بازار**\n\nارزهای دیجیتال، طلا، بورس و نرخ ارز", get_market_menu_keyboard(user_id))
         return
     
     if data.startswith("buttons_menu_"):
-        await query.edit_message_text("🎛️ **مدیریت دکمه‌ها**\n\nروشن یا خاموش کردن رنگ دکمه‌ها", reply_markup=get_buttons_menu_keyboard(user_id))
+        await safe_edit(query, "🎛️ **مدیریت دکمه‌ها**\n\nروشن یا خاموش کردن رنگ دکمه‌ها", get_buttons_menu_keyboard(user_id))
         return
     
     if data.startswith("ai_menu_"):
-        await query.edit_message_text("☥ **هوش مصنوعی**\n\nمدیریت ۵ هوش جدید:\n🧠 DeepSeek\n💬 ChatGPT\n🤖 Grok\n📦 Blackbox\n🟢 OpenAI", reply_markup=get_ai_menu_keyboard(user_id))
+        await safe_edit(query, "☥ **هوش مصنوعی**\n\nمدیریت ۵ هوش جدید:\n🧠 DeepSeek\n💬 ChatGPT\n🤖 Grok\n📦 Blackbox\n🟢 OpenAI", get_ai_menu_keyboard(user_id))
         return
     
     # ========== دکمه‌های exec ==========
@@ -5729,31 +5778,32 @@ async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     manager = selfbot_managers[user_id_str]
     cmd = data.replace(f'exec_', '').replace(f'_{user_id}', '')
     
-    msg = await context.bot.send_message(chat_id=chat_id, text=f"⏳ در حال اجرا...")
+    msg = None
+    try:
+        msg = await context.bot.send_message(chat_id=chat_id, text="⏳ در حال اجرا...")
+    except Exception:
+        pass
     
     # ========== دستورات تایم ==========
     if cmd == 'time_on':
         db.update_selfbot_setting(user_id, 'time_enabled', 1)
         db.update_selfbot_setting(user_id, 'flag_enabled', 0)
         await manager.update_profile_name()
-        await msg.edit_text("✅ تایم روشن شد")
-        await query.message.edit_text(query.message.text, reply_markup=get_time_menu_keyboard(user_id))
+        await safe_edit(query, "✅ تایم روشن شد", get_time_menu_keyboard(user_id))
         return
     
     if cmd == 'time_flag':
         db.update_selfbot_setting(user_id, 'time_enabled', 1)
         db.update_selfbot_setting(user_id, 'flag_enabled', 1)
         await manager.update_profile_name()
-        await msg.edit_text("✅ تایمر پرچم روشن شد")
-        await query.message.edit_text(query.message.text, reply_markup=get_time_menu_keyboard(user_id))
+        await safe_edit(query, "✅ تایمر پرچم روشن شد", get_time_menu_keyboard(user_id))
         return
     
     if cmd == 'time_off':
         db.update_selfbot_setting(user_id, 'time_enabled', 0)
         db.update_selfbot_setting(user_id, 'flag_enabled', 0)
         await manager.restore_profile_name()
-        await msg.edit_text("✅ تایم خاموش شد")
-        await query.message.edit_text(query.message.text, reply_markup=get_time_menu_keyboard(user_id))
+        await safe_edit(query, "✅ تایم خاموش شد", get_time_menu_keyboard(user_id))
         return
     
     # ========== دستورات فونت ==========
@@ -5763,31 +5813,28 @@ async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             if 0 <= font_index < len(classic_fonts):
                 manager.selected_font = font_index
                 manager.save_state()
-                await msg.edit_text(f"✅ فونت {classic_fonts[font_index]} انتخاب شد")
-                await query.message.edit_text(query.message.text, reply_markup=get_font_menu_keyboard(user_id))
+                await safe_edit(query, f"✅ فونت انتخاب شد", get_font_menu_keyboard(user_id))
             else:
-                await msg.edit_text("❌ فونت نامعتبر")
-        except:
-            await msg.edit_text("❌ خطا در انتخاب فونت")
+                await query.answer("❌ فونت نامعتبر", show_alert=True)
+        except Exception:
+            await query.answer("❌ خطا در انتخاب فونت", show_alert=True)
         return
     
     if cmd == 'font_all':
         manager.time_font_indices = 'all'
         manager.save_state()
-        await msg.edit_text("✅ همه فونت‌ها فعال شدند")
-        await query.message.edit_text(query.message.text, reply_markup=get_font_menu_keyboard(user_id))
+        await safe_edit(query, "✅ همه فونت‌ها فعال شدند", get_font_menu_keyboard(user_id))
         return
     
     # ========== دستورات پرچم ==========
     if cmd.startswith('flag_'):
-        flag = cmd.split('_')[1]
+        flag = cmd.split('_', 1)[1] if '_' in cmd else ''
         if flag in flags:
             manager.selected_flag = flag
             manager.save_state()
-            await msg.edit_text(f"✅ پرچم {flag} انتخاب شد")
-            await query.message.edit_text(query.message.text, reply_markup=get_flagselect_menu_keyboard(user_id))
+            await safe_edit(query, f"✅ پرچم {flag} انتخاب شد", get_flagselect_menu_keyboard(user_id))
         else:
-            await msg.edit_text("❌ پرچم نامعتبر")
+            await query.answer("❌ پرچم نامعتبر", show_alert=True)
         return
     
     # ========== دستورات هوش مصنوعی ==========
@@ -5795,84 +5842,98 @@ async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         ai_name = cmd.replace('ai_pm_', '')
         if ai_name == 'off':
             manager.set_active_ai(None, 'pm')
-            await msg.edit_text('✅ همه هوش‌ها در پی‌وی خاموش شدند')
+            await safe_edit(query, '✅ همه هوش‌ها در پی‌وی خاموش شدند', get_ai_menu_keyboard(user_id))
         else:
             manager.set_active_ai(ai_name, 'pm')
-            await msg.edit_text(f"✅ {AI_APIS[ai_name]['name']} در پی‌وی روشن شد")
-        await query.message.edit_text(query.message.text, reply_markup=get_ai_menu_keyboard(user_id))
+            name = AI_APIS.get(ai_name, {}).get('name', ai_name)
+            await safe_edit(query, f"✅ {name} در پی‌وی روشن شد", get_ai_menu_keyboard(user_id))
         return
     
     if cmd.startswith('ai_group_'):
         ai_name = cmd.replace('ai_group_', '')
         if ai_name == 'off':
             manager.set_active_ai(None, 'group')
-            await msg.edit_text('✅ همه هوش‌ها در گروه خاموش شدند')
+            await safe_edit(query, '✅ همه هوش‌ها در گروه خاموش شدند', get_ai_menu_keyboard(user_id))
         else:
             manager.set_active_ai(ai_name, 'group')
-            await msg.edit_text(f"✅ {AI_APIS[ai_name]['name']} در گروه روشن شد")
-        await query.message.edit_text(query.message.text, reply_markup=get_ai_menu_keyboard(user_id))
+            name = AI_APIS.get(ai_name, {}).get('name', ai_name)
+            await safe_edit(query, f"✅ {name} در گروه روشن شد", get_ai_menu_keyboard(user_id))
         return
     
     # ========== دستورات دکمه‌ها ==========
     if cmd == 'buttons_on':
         db.set_buttons_enabled(user_id, True)
-        await msg.edit_text("✅ دکمه‌ها رنگی شدند")
-        await query.message.edit_text(query.message.text, reply_markup=get_buttons_menu_keyboard(user_id))
+        await safe_edit(query, "✅ دکمه‌ها رنگی شدند", get_buttons_menu_keyboard(user_id))
         return
     
     if cmd == 'buttons_off':
         db.set_buttons_enabled(user_id, False)
-        await msg.edit_text("✅ دکمه‌ها سفید شدند")
-        await query.message.edit_text(query.message.text, reply_markup=get_buttons_menu_keyboard(user_id))
+        await safe_edit(query, "✅ دکمه‌ها سفید شدند", get_buttons_menu_keyboard(user_id))
         return
     
     # ========== دستورات عکس و لوگو ==========
     if cmd == 'photo1':
-        await msg.edit_text("🖼️ لطفاً پیام را به فرمت زیر ارسال کنید:\n\nعکس ۱ [متن]")
+        if msg:
+            await msg.edit_text("🖼️ لطفاً پیام را به فرمت زیر ارسال کنید:\n\nعکس ۱ [متن]")
         return
     
     if cmd == 'photo2':
-        await msg.edit_text("🖼️ لطفاً پیام را به فرمت زیر ارسال کنید:\n\nعکس ۲ [متن]")
+        if msg:
+            await msg.edit_text("🖼️ لطفاً پیام را به فرمت زیر ارسال کنید:\n\nعکس ۲ [متن]")
         return
     
     if cmd == 'ghibli':
-        await msg.edit_text("🎨 لطفاً روی یک عکس ریپلای کنید و دستور جیبلی را ارسال کنید")
+        if msg:
+            await msg.edit_text("🎨 لطفاً روی یک عکس ریپلای کنید و دستور جیبلی را ارسال کنید")
         return
     
     if cmd == 'logo':
-        await msg.edit_text("🎨 لطفاً پیام را به فرمت زیر ارسال کنید:\n\nلوگو [عدد] [متن]\nمثال: لوگو 5 mmd")
+        if msg:
+            await msg.edit_text("🎨 لطفاً پیام را به فرمت زیر ارسال کنید:\n\nلوگو [عدد] [متن]\nمثال: لوگو 5 mmd")
         return
     
     # ========== دستورات ارز و بازار ==========
     if cmd == 'crypto':
-        await msg.edit_text("💰 لطفاً پیام را به فرمت زیر ارسال کنید:\n\nارز [نام ارز]\nمثال: ارز bitcoin")
+        if msg:
+            await msg.edit_text("💰 لطفاً پیام را به فرمت زیر ارسال کنید:\n\nارز [نام ارز]\nمثال: ارز bitcoin")
         return
     
     if cmd == 'gold':
-        await msg.edit_text("💎 لطفاً یکی از دستورات زیر را ارسال کنید:\n\nدلار\nطلا\nنقره")
+        if msg:
+            await msg.edit_text("💎 لطفاً یکی از دستورات زیر را ارسال کنید:\n\nدلار\nطلا\nنقره")
         return
     
     if cmd == 'bourse':
-        await msg.edit_text("📊 لطفاً پیام را به فرمت زیر ارسال کنید:\n\nبورس [نماد]\nمثال: بورس شاخص")
+        if msg:
+            await msg.edit_text("📊 لطفاً پیام را به فرمت زیر ارسال کنید:\n\nبورس [نماد]\nمثال: بورس شاخص")
         return
     
     if cmd == 'nobitex':
-        await msg.edit_text("💵 در حال دریافت نرخ ارز...")
+        if msg:
+            await msg.edit_text("💵 در حال دریافت نرخ ارز...")
         result = await get_nobitex_rate()
         if result:
-            await msg.edit_text(f"💵 **نرخ ارز:**\n{result}")
+            if msg:
+                await msg.edit_text(f"💵 **نرخ ارز:**\n{result}")
         else:
-            await msg.edit_text("❌ خطا در دریافت نرخ ارز")
+            if msg:
+                await msg.edit_text("❌ خطا در دریافت نرخ ارز")
         return
     
     # ========== دستورات تقویم ==========
     if cmd == 'calendar':
-        await manager.handle_calendar_command(query.message)
-        await msg.delete()
+        if query.message:
+            await manager.handle_calendar_command(query.message)
+        if msg:
+            try:
+                await msg.delete()
+            except:
+                pass
         return
     
     # ========== سایر دستورات ==========
-    await msg.edit_text(f"✅ دستور {cmd} اجرا شد")
+    if msg:
+        await msg.edit_text(f"✅ دستور {cmd} اجرا شد")
 
 # ======================================================
 # تابع help_handler
@@ -5991,7 +6052,7 @@ async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if data in help_texts:
         await query.edit_message_text(help_texts[data], reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("⚈ بازگشت", callback_data=query.message.reply_markup.inline_keyboard[0][0].callback_data.split('_')[0] + "_menu_" + str(user_id) if query.message.reply_markup else "back_main", style="danger")]
+            [InlineKeyboardButton("⚈ بازگشت", callback_data="back_main", style="danger")]
         ]))
     else:
         await query.answer("❌ راهنما برای این بخش موجود نیست")
@@ -6052,7 +6113,8 @@ async def main():
     
     await app.initialize()
     await app.start()
-    await app.updater.start_polling(allowed_updates=Update.ALL_TYPES, timeout=30)
+    await app.bot.delete_webhook(drop_pending_updates=True)
+    await app.updater.start_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True, timeout=30)
     
     print("✅ ربات شروع شد")
     print("=" * 60)
