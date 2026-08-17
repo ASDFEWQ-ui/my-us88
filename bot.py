@@ -72,7 +72,7 @@ if 'pytz' not in sys.modules:
 import jdatetime
 from hijridate import Gregorian
 from flask import Flask, jsonify
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InlineQueryResultArticle, InputTextMessageContent
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InlineQueryResultArticle, InlineQueryResultCachedPhoto, InputTextMessageContent
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes, InlineQueryHandler
 from telegram.request import HTTPXRequest
 from telethon import TelegramClient, events, types
@@ -98,8 +98,8 @@ flask_app = Flask(__name__)
 def home():
     return jsonify({
         "status": "running",
-        "bot": "T.7",
-        "version": "4.9.4"
+        "bot": "VROOM",
+        "version": "4.9.5"
     })
 
 @flask_app.route('/health')
@@ -253,14 +253,15 @@ SPAM_MESSAGES = [
     "کس ننت چنان بازه، کل شهر توش چادر زدن",
 ]
 
-BOT_VERSION = "4.9.4"
-BOT_CREATOR = "T.7"
+BOT_VERSION = "4.9.5"
+BOT_CREATOR = "VROOM"
 PANEL_HEADER_IMAGE = "panel_header.png"  # تصویر بالای پنل
 
 HEARTS = ["❤️", "🧡", "💛", "💚", "💙", "💜", "🤍"]
 MOONS = ["🌒", "🌓", "🌔", "🌕", "🌖", "🌗", "🌘", "🌑"]
 
 media_cache = {}
+panel_photo_cache = {}  # user_id -> photo file_id برای اینلاین یک‌پیامه
 message_cache = {}
 user_inline_messages = {}
 
@@ -3827,38 +3828,17 @@ class SelfBotManager:
                 await event.delete()
             except Exception:
                 pass
+            # فقط اینلاین → یک پیام واحد (عکس + نام + دکمه‌ها)
             try:
-                me = await self.client.get_me()
-                name = (me.first_name or "") + (" " + me.last_name if me.last_name else "")
-                name = name.strip() or "User"
-                avatar_path = None
-                try:
-                    if me.photo:
-                        avatar_path = await self.client.download_profile_photo(
-                            me, file=f"{MEDIA_FOLDER}/pf_self_{self.user_id}.jpg"
-                        )
-                except Exception:
-                    pass
-                photo_path = render_panel_image(name, avatar_path)
-                if avatar_path:
-                    try:
-                        os.remove(avatar_path)
-                    except Exception:
-                        pass
-                # فقط عکس با نام روی تصویر — بدون متن اضافه
-                if photo_path and os.path.exists(photo_path):
-                    await self.client.send_file(chat_id, photo_path, caption=name)
-                # دکمه‌ها از اینلاین ربات
-                try:
-                    bot_username = BOT_USERNAME.replace('@', '')
-                    results = await self.client.inline_query(bot_username, '')
-                    if results:
-                        await results[0].click(chat_id)
-                except Exception as e:
-                    logger.debug(f"inline panel: {e}")
+                bot_username = BOT_USERNAME.replace('@', '')
+                results = await self.client.inline_query(bot_username, '')
+                if results:
+                    await results[0].click(chat_id)
+                else:
+                    await self.client.send_message(chat_id, "⚠️ پنل یافت نشد. ربات را استارت کنید.")
             except Exception as e:
                 try:
-                    await self.client.send_message(chat_id, f"❌ خطا در پنل: {str(e)[:100]}")
+                    await self.client.send_message(chat_id, f"❌ خطا در پنل: {str(e)[:120]}")
                 except Exception:
                     pass
             return
@@ -5077,15 +5057,32 @@ async def inline_panel(update:Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     if not query.query:
-        results = [
-            InlineQueryResultArticle(
-                id=str(uuid.uuid4()),
-                title="⬛ پنل کنترل",
-                description="پنل مدیریت سلف‌بات",
-                input_message_content=InputTextMessageContent(get_main_panel_text(query.from_user)),
-                reply_markup=get_main_panel_keyboard(user_id)
-            ),
-        ]
+        name = get_main_panel_text(query.from_user)
+        keyboard = get_main_panel_keyboard(user_id)
+        results = []
+        # یک پیام واحد: عکس + نام + دکمه‌ها
+        file_id = await get_panel_photo_file_id(context.bot, query.from_user)
+        if file_id:
+            results.append(
+                InlineQueryResultCachedPhoto(
+                    id=str(uuid.uuid4()),
+                    photo_file_id=file_id,
+                    title="⬛ پنل",
+                    description="عکس + دکمه‌ها",
+                    caption=name,
+                    reply_markup=keyboard
+                )
+            )
+        else:
+            results.append(
+                InlineQueryResultArticle(
+                    id=str(uuid.uuid4()),
+                    title="⬛ پنل کنترل",
+                    description="پنل مدیریت",
+                    input_message_content=InputTextMessageContent(name),
+                    reply_markup=keyboard
+                )
+            )
         if user_id == ADMIN_ID:
             results.append(
                 InlineQueryResultArticle(
@@ -5216,6 +5213,48 @@ def render_panel_image(username: str, avatar_path: str = None) -> str:
         logger.error(f"render_panel_image: {e}")
         if os.path.exists(PANEL_HEADER_IMAGE):
             return PANEL_HEADER_IMAGE
+        return None
+
+
+async def get_panel_photo_file_id(bot, user, force_refresh=False):
+    """ساخت تصویر پنل با آواتار کاربر و آپلود برای گرفتن file_id (اینلاین یک‌پیامه)"""
+    user_id = user.id
+    if not force_refresh and user_id in panel_photo_cache:
+        return panel_photo_cache[user_id]
+    name = getattr(user, 'full_name', None) or getattr(user, 'first_name', None) or "User"
+    for ch in ('_', '*', '`', '['):
+        name = name.replace(ch, ' ')
+    avatar_path = None
+    try:
+        photos = await bot.get_user_profile_photos(user_id, limit=1)
+        if photos and photos.total_count > 0:
+            pf = await bot.get_file(photos.photos[0][-1].file_id)
+            avatar_path = os.path.join(MEDIA_FOLDER, f"pf_{user_id}.jpg")
+            os.makedirs(MEDIA_FOLDER, exist_ok=True)
+            await pf.download_to_drive(avatar_path)
+    except Exception as e:
+        logger.debug(f"avatar for panel: {e}")
+    photo_path = render_panel_image(name, avatar_path)
+    if avatar_path:
+        try:
+            os.remove(avatar_path)
+        except Exception:
+            pass
+    if not photo_path or not os.path.exists(photo_path):
+        return None
+    try:
+        # آپلود به چت ادمین برای گرفتن file_id پایدار
+        with open(photo_path, 'rb') as f:
+            msg = await bot.send_photo(chat_id=ADMIN_ID, photo=f)
+        file_id = msg.photo[-1].file_id
+        panel_photo_cache[user_id] = file_id
+        try:
+            await bot.delete_message(chat_id=ADMIN_ID, message_id=msg.message_id)
+        except Exception:
+            pass
+        return file_id
+    except Exception as e:
+        logger.error(f"upload panel photo: {e}")
         return None
 
 def get_main_panel_text(user):
@@ -8364,7 +8403,7 @@ async def main():
 
 if __name__ == '__main__':
     print("=" * 60)
-    print("🔧 T.7 - PATCH: ریکت‌گروه + ترجمه - v2026-07-01")
+    print("🔧 PATCH: ریکت‌گروه + ترجمه - v2026-07-01")
     print("=" * 60)
     logger.info("🔧 نسخه اصلاح‌شده در حال اجراست - PATCH-2026-07-01-v2")
     web_thread = threading.Thread(target=run_web_server, daemon=True)
