@@ -86,7 +86,7 @@ from telethon.tl.functions.channels import GetParticipantsRequest
 from telethon.tl.types import ChannelParticipantsAdmins
 import psutil
 from platform import python_version, uname
-from currency_converter import CurrencyConverter
+# from currency_converter import CurrencyConverter  # حذف شد
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 from io import BytesIO
 import urllib.parse
@@ -1689,7 +1689,7 @@ async def get_ai_response(text, ai_type, user_id=None):
         logger.error(f"خطا در get_ai_response: {e}")
     return None
 
-COMMAND_KEYWORDS = ('لیست', 'شروع', 'تایم', 'قلب', 'ماه', 'اطلاعات', 'دانلود', 'تاریخ', 'فعال', 'غیرفعال', 'حذف', 'ست', 'بولد', 'زیرخط', 'خط خورده', 'نقل قول', 'اسپویلر', 'کج', 'کد', 'پیش', 'اسپم', 'بلاک', 'ریکت', 'پیوی', 'گروه', 'درباره', 'من کی ام', 'قفل', 'باز', 'تنظیم', 'گروه گزارش', 'دشمن', 'دوست', 'کانال', 'کامنت', 'تست', 'لیست دشمن', 'لیست اسپم', 'پاک کردن اسپم', 'حذف اسپم', 'اضافه اسپم', 'اتمام اسپم', 'تغییر اسم', 'تغییر بیو', 'تغییر پروفایل', 'پروف', 'اسپم روشن', 'اسپم خاموش', 'پینگ', 'سرچ', 'خروج سرچ', 'قلب پیشرفته', 'عشق', 'سنتت', 'هک', 'وضعیت', '.پنل', 'پنل', '/panel', '.اهنگ', 'تنظیم اسپم', 'سلف روشن', 'سلف خاموش', 'پین', 'تگ ادمین', 'امار گپ', '.کد', 'تقویم', 'فونت', 'انگلیسی', 'عربی', 'عبری', 'روسی', 'ترکی', 'اتوسین', 'تگ همه', 'لغو تگ', 'منشی', 'افزودن پاسخ', 'حذف پاسخ', 'لیست پاسخ', 'پاک کردن پاسخ‌ها', 'بولینگ', 'تاس', 'سه رنگ', 'شانس', 'تاریخ ساخت اکانت', 'نشست‌های فعال', 'اطلاعات سیستم', 'قیمت ارز', 'نرخ ارز', 'ریاضی', 'تبدیل ارز', 'استیکر متن', 'اسکرین‌شات', 'تشخیص متن', 'فرمول', 'ساعت در بیو', 'ساعت در بیو ۲', 'بیو تاریخ', 'بیو کامل', 'بیو عاشقانه')
+COMMAND_KEYWORDS = ('لیست', 'شروع', 'تایم', 'قلب', 'ماه', 'اطلاعات', 'دانلود', 'تاریخ', 'فعال', 'غیرفعال', 'حذف', 'ست', 'بولد', 'زیرخط', 'خط خورده', 'نقل قول', 'اسپویلر', 'کج', 'کد', 'پیش', 'اسپم', 'بلاک', 'ریکت', 'پیوی', 'گروه', 'درباره', 'من کی ام', 'قفل', 'باز', 'تنظیم', 'گروه گزارش', 'دشمن', 'دوست', 'کانال', 'کامنت', 'تست', 'لیست دشمن', 'لیست اسپم', 'پاک کردن اسپم', 'حذف اسپم', 'اضافه اسپم', 'اتمام اسپم', 'تغییر اسم', 'تغییر بیو', 'تغییر پروفایل', 'پروف', 'اسپم روشن', 'اسپم خاموش', 'پینگ', 'سرچ', 'خروج سرچ', 'قلب پیشرفته', 'عشق', 'سنتت', 'هک', 'وضعیت', '.پنل', 'پنل', '/panel', '.اهنگ', 'تنظیم اسپم', 'سلف روشن', 'سلف خاموش', 'پین', 'تگ ادمین', 'امار گپ', '.کد', 'تقویم', 'فونت', 'انگلیسی', 'عربی', 'عبری', 'روسی', 'ترکی', 'اتوسین', 'تگ همه', 'لغو تگ', 'منشی', 'افزودن پاسخ', 'حذف پاسخ', 'لیست پاسخ', 'پاک کردن پاسخ‌ها', 'بولینگ', 'تاس', 'سه رنگ', 'شانس', 'تاریخ ساخت اکانت', 'نشست‌های فعال', 'اطلاعات سیستم', 'قیمت ارز', 'نرخ ارز', 'استیکر متن', 'اسکرین‌شات', 'تشخیص متن', 'ساعت در بیو', 'ساعت در بیو ۲', 'بیو تاریخ', 'بیو کامل', 'بیو عاشقانه')  # کلمات ریاضی و تبدیل ارز و فرمول حذف شد
 
 TRANSLATE_LANG_CODES = {
     'english': 'en',
@@ -2705,51 +2705,6 @@ class SelfBotManager:
                 output.seek(0)
                 await self.client.send_file(chat_id, output)
                 await event.delete()
-            except Exception as e:
-                await event.edit(f"❌ خطا: {e}")
-            return
-        
-        # ========== ریاضی ==========
-        if cmd == 'ریاضی' and args:
-            expr = ' '.join(args)
-            expr = re.sub(r'[^0-9+\-*/%().]', '', expr)
-            try:
-                result = eval(expr)
-                await event.edit(f"🧮 **عبارت:** `{expr}`\n✅ **نتیجه:** `{result}`")
-            except Exception as e:
-                await event.edit(f"❌ خطا: {e}")
-            return
-        
-        # ========== تبدیل ارز ==========
-        if cmd == 'تبدیل' and args and args[0] == 'ارز' and len(args) == 4:
-            try:
-                amount = float(args[1])
-                from_cur = args[2].upper()
-                to_cur = args[3].upper()
-                c = CurrencyConverter()
-                result = c.convert(amount, from_cur, to_cur)
-                await event.edit(f"💱 **تبدیل ارز:**\n\n{amount:,.0f} {from_cur} = {result:,.2f} {to_cur}")
-            except Exception as e:
-                await event.edit(f"❌ خطا: {e}")
-            return
-        
-        # ========== فرمول ریاضی ==========
-        if cmd == 'فرمول' and args:
-            formula = ' '.join(args)
-            try:
-                escaped = urllib.parse.quote(f"\\dpi{{1000}} {formula}")
-                url = f"https://latex.codecogs.com/png.image?{escaped}"
-                response = requests.get(url, timeout=10)
-                if response.status_code == 200:
-                    img = Image.open(BytesIO(response.content))
-                    bordered = ImageOps.expand(img, border=30, fill=(255, 255, 255))
-                    output = BytesIO()
-                    bordered.save(output, format='PNG')
-                    output.seek(0)
-                    await self.client.send_file(chat_id, output, caption=f"📐 **فرمول:** {formula}")
-                    await event.delete()
-                else:
-                    await event.edit(f"❌ خطا در تولید فرمول")
             except Exception as e:
                 await event.edit(f"❌ خطا: {e}")
             return
@@ -4967,7 +4922,7 @@ async def inline_panel(update:Update, context: ContextTypes.DEFAULT_TYPE):
             ("⚉ حفاظت اسپم", "protection", "محافظت در برابر اسپم"),
             ("☥ هوش مصنوعی", "ai", "مدیریت هوش مصنوعی"),
             ("֎ گزارش", "report", "تنظیم گروه گزارش"),
-            ("🛠 ابزار", "tools", "امار گپ / کد QR / تگ ادمین / پین / سلف روشن/خاموش / ریاضی / تبدیل ارز / فرمول ریاضی"),
+            ("🛠 ابزار", "tools", "امار گپ / کد QR / تگ ادمین / پین / سلف روشن/خاموش"),
             ("🤖 منشی هوشمند", "monshi", "مدیریت منشی و پاسخ‌های خودکار"),
             ("🏷️ تگ همه", "mention", "تگ کردن همه اعضای گروه"),
             ("🔮 فال", "fortune", "فال عمومی / فال حافظ / فال قهوه")
@@ -5209,6 +5164,9 @@ def get_message_menu_keyboard(user_id):
     ]
     return InlineKeyboardMarkup(keyboard)
 
+# ======================================================
+# منوی ابزار - بدون دکمه‌های ریاضی، تبدیل ارز و فرمول
+# ======================================================
 def get_tools_menu_keyboard(user_id):
     keyboard = [
         [
@@ -5222,13 +5180,6 @@ def get_tools_menu_keyboard(user_id):
         [
             InlineKeyboardButton("🤖 سلف روشن", callback_data=f"exec_self_on_{user_id}", style="success"),
             InlineKeyboardButton("⛔ سلف خاموش", callback_data=f"exec_self_off_{user_id}", style="danger")
-        ],
-        [
-            InlineKeyboardButton("🧮 ریاضی", callback_data=f"exec_math_{user_id}", style="primary"),
-            InlineKeyboardButton("💱 تبدیل ارز", callback_data=f"exec_currency_convert_{user_id}", style="primary")
-        ],
-        [
-            InlineKeyboardButton("📐 فرمول ریاضی", callback_data=f"exec_latex_{user_id}", style="primary")
         ],
         [
             InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main", style="danger")
@@ -5748,7 +5699,7 @@ async def _button_callback_impl(update: Update, context: ContextTypes.DEFAULT_TY
             "protection": ("⚉ حفاظت اسپم\n\n• اسپم روشن\n• اسپم خاموش\n• تنظیم اسپم [تعداد] [زمان]\n• وضعیت اسپم", get_protection_menu_keyboard),
             "ai": ("☥ هوش مصنوعی (۵ سرویس)\n\nانتخاب هوش در پی‌وی یا گروه:", get_ai_menu_keyboard),
             "report": ("֎ گزارش\n\n• تنظیم گزارش\n• گروه گزارش", get_report_menu_keyboard),
-            "tools": ("🛠 ابزارها\n\n• امار گپ\n• کد QR\n• تگ ادمین\n• پین\n• سلف روشن/خاموش\n• ریاضی [عبارت]\n• تبدیل ارز [مقدار] [از] [به]\n• فرمول [فرمول]", get_tools_menu_keyboard),
+            "tools": ("🛠 ابزارها\n\n• امار گپ\n• کد QR\n• تگ ادمین\n• پین\n• سلف روشن/خاموش", get_tools_menu_keyboard),
             "monshi": ("🤖 **منشی هوشمند**\n\nمدیریت پاسخ‌های خودکار", get_monshi_menu_keyboard),
             "mention": ("🏷️ **تگ همه**\n\nتگ کردن همه اعضای گروه به صورت ۱۳ نفره", get_mention_menu_keyboard),
             "fortune": ("🔮 **فال و طالع‌بینی**\n\nانتخاب کنید:", get_fortune_menu_keyboard)
@@ -5993,18 +5944,6 @@ async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     
     if cmd == 'ocr':
         await msg.edit_text("🔍 لطفاً روی یک عکس ریپلای کنید و دستور تشخیص متن را ارسال کنید")
-        return
-    
-    if cmd == 'math':
-        await msg.edit_text("🧮 لطفاً پیام را به فرمت زیر ارسال کنید:\n\nریاضی [عبارت]\nمثال: ریاضی 2+3*4")
-        return
-    
-    if cmd == 'currency_convert':
-        await msg.edit_text("💱 لطفاً پیام را به فرمت زیر ارسال کنید:\n\nتبدیل ارز [مقدار] [از] [به]\nمثال: تبدیل ارز 100 USD EUR")
-        return
-    
-    if cmd == 'latex':
-        await msg.edit_text("📐 لطفاً پیام را به فرمت زیر ارسال کنید:\n\nفرمول [فرمول]\nمثال: فرمول x^2 + y^2 = z^2")
         return
     
     if cmd == 'sticker_text':
