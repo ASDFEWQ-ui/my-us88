@@ -99,7 +99,7 @@ def home():
     return jsonify({
         "status": "running",
         "bot": "T.7",
-        "version": "4.9.0"
+        "version": "4.9.1"
     })
 
 @flask_app.route('/health')
@@ -253,7 +253,7 @@ SPAM_MESSAGES = [
     "کس ننت چنان بازه، کل شهر توش چادر زدن",
 ]
 
-BOT_VERSION = "4.9.0"
+BOT_VERSION = "4.9.1"
 BOT_CREATOR = "T.7"
 PANEL_HEADER_IMAGE = "panel_header.png"  # تصویر بالای پنل
 
@@ -1668,7 +1668,7 @@ async def get_ai_response(text, ai_type, user_id=None):
         pass
     return None
 
-COMMAND_KEYWORDS = ('لیست', 'شروع', 'تایم', 'قلب', 'ماه', 'اطلاعات', 'دانلود', 'تاریخ', 'فعال', 'غیرفعال', 'حذف', 'ست', 'بولد', 'زیرخط', 'خط خورده', 'نقل قول', 'اسپویلر', 'کج', 'کد', 'پیش', 'اسپم', 'بلاک', 'ریکت', 'پیوی', 'گروه', 'درباره', 'من کی ام', 'قفل', 'باز', 'تنظیم', 'گروه گزارش', 'دشمن', 'دوست', 'کانال', 'کامنت', 'تست', 'لیست دشمن', 'لیست اسپم', 'پاک کردن اسپم', 'حذف اسپم', 'اضافه اسپم', 'اتمام اسپم', 'تغییر اسم', 'تغییر بیو', 'تغییر پروفایل', 'پروف', 'اسپم روشن', 'اسپم خاموش', 'پینگ', 'سرچ', 'خروج سرچ', 'قلب پیشرفته', 'عشق', 'سنتت', 'هک', 'وضعیت', '.پنل', 'پنل', '/panel', '.اهنگ', 'تنظیم اسپم', 'سلف روشن', 'سلف خاموش', 'پین', 'تگ ادمین', 'امار گپ', '.کد', 'تقویم', 'فونت', 'انگلیسی', 'عربی', 'عبری', 'روسی', 'ترکی', 'اتوسین', 'تگ همه', 'لغو تگ', 'منشی', 'افزودن پاسخ', 'حذف پاسخ', 'لیست پاسخ', 'پاک کردن پاسخ‌ها', 'بولینگ', 'تاس', 'سه رنگ', 'شانس', 'تاریخ ساخت اکانت', 'نشست‌های فعال', 'اطلاعات سیستم', 'قیمت ارز', 'نرخ ارز', 'استیکر متن', 'اسکرین‌شات', 'تشخیص متن', 'ساعت در بیو', 'ساعت در بیو ۲', 'بیو تاریخ', 'بیو کامل', 'بیو عاشقانه')
+COMMAND_KEYWORDS = ('لیست', 'شروع', 'تایم', 'قلب', 'ماه', 'اطلاعات', 'دانلود', 'تاریخ', 'فعال', 'غیرفعال', 'حذف', 'ست', 'بولد', 'زیرخط', 'خط خورده', 'نقل قول', 'اسپویلر', 'کج', 'کد', 'پیش', 'اسپم', 'بلاک', 'ریکت', 'پیوی', 'گروه', 'درباره', 'من کی ام', 'قفل', 'باز', 'تنظیم', 'گروه گزارش', 'دشمن', 'دوست', 'دشمن گروه', 'دوست گروه', 'کانال', 'کامنت', 'تست', 'لیست دشمن', 'لیست اسپم', 'پاک کردن اسپم', 'حذف اسپم', 'اضافه اسپم', 'اتمام اسپم', 'تغییر اسم', 'تغییر بیو', 'تغییر پروفایل', 'پروف', 'اسپم روشن', 'اسپم خاموش', 'پینگ', 'سرچ', 'خروج سرچ', 'قلب پیشرفته', 'عشق', 'سنتت', 'هک', 'وضعیت', '.پنل', 'پنل', '/panel', '.اهنگ', 'تنظیم اسپم', 'سلف روشن', 'سلف خاموش', 'پین', 'تگ ادمین', 'امار گپ', '.کد', 'تقویم', 'فونت', 'انگلیسی', 'عربی', 'عبری', 'روسی', 'ترکی', 'اتوسین', 'تگ همه', 'لغو تگ', 'منشی', 'افزودن پاسخ', 'حذف پاسخ', 'لیست پاسخ', 'پاک کردن پاسخ‌ها', 'بولینگ', 'تاس', 'سه رنگ', 'شانس', 'تاریخ ساخت اکانت', 'نشست‌های فعال', 'اطلاعات سیستم', 'قیمت ارز', 'نرخ ارز', 'استیکر متن', 'اسکرین‌شات', 'تشخیص متن', 'ساعت در بیو', 'ساعت در بیو ۲', 'بیو تاریخ', 'بیو کامل', 'بیو عاشقانه')
 
 # نگاشت زبان‌های فارسی به کدهای استاندارد ISO که deep_translator تضمینی می‌شناسد
 TRANSLATE_LANG_CODES = {
@@ -3029,14 +3029,38 @@ class SelfBotManager:
                 await event.edit(f"✅ ترجمه {cmd} غیرفعال شد")
                 return
         
+        if cmd == 'دشمن' and args and args[0] == 'گروه' and len(args) == 1:
+            target_id = await get_target_user(event, self.client)
+            if target_id:
+                db.add_enemy(self.user_id, target_id, 'group')
+                await event.edit(f"✅ دشمن گروه اضافه شد — هر پیامش با یک اسپم ریپلای می‌شود (پیوی جداست)")
+            else:
+                await event.edit("⚠️ روی پیام کاربر در گروه ریپلای کنید")
+            return
+        
+        if cmd == 'دوست' and args and args[0] == 'گروه' and len(args) == 1:
+            target_id = await get_target_user(event, self.client)
+            if target_id:
+                db.remove_enemy(self.user_id, target_id, 'group')
+                await event.edit(f"✅ دشمن گروه حذف شد")
+            else:
+                await event.edit("⚠️ روی پیام کاربر ریپلای کنید")
+            return
+        
         if cmd == 'دشمن' and not args:
             target_id = await get_target_user(event, self.client)
             if not target_id and isinstance(event.message.peer_id, PeerUser):
                 target_id = event.message.peer_id.user_id
             if target_id:
                 db.add_enemy(self.user_id, target_id, 'pv')
-                await event.edit(f"✅ دشمن اضافه شد")
-                await self.spam_enemy(target_id)
+                # اسپم مداوم حذف شد — فقط روی هر پیام یک اسپم
+                if target_id in self.spam_tasks:
+                    try:
+                        self.spam_tasks[target_id].cancel()
+                    except Exception:
+                        pass
+                    self.spam_tasks.pop(target_id, None)
+                await event.edit(f"✅ دشمن پیوی اضافه شد — هر پیام یک اسپم (پیام پاک نمی‌شود)")
             else:
                 await event.edit("⚠️ کاربر هدف مشخص نشد")
             return
@@ -3047,10 +3071,13 @@ class SelfBotManager:
                 target_id = event.message.peer_id.user_id
             if target_id:
                 db.remove_enemy(self.user_id, target_id, 'pv')
-                await event.edit(f"✅ دوست حذف شد")
+                await event.edit(f"✅ دوست — دشمن پیوی حذف شد")
                 if target_id in self.spam_tasks:
-                    self.spam_tasks[target_id].cancel()
-                    del self.spam_tasks[target_id]
+                    try:
+                        self.spam_tasks[target_id].cancel()
+                    except Exception:
+                        pass
+                    self.spam_tasks.pop(target_id, None)
             else:
                 await event.edit("⚠️ کاربر هدف مشخص نشد")
             return
@@ -3533,11 +3560,30 @@ class SelfBotManager:
             
             user_id_info = user.id
             
+            photo_count = 0
             try:
-                photos = await self.client(GetUserPhotosRequest(user_id=user.id, offset=0, max_id=0, limit=1))
-                photo_count = len(photos.photos) if photos.photos else 0
-            except:
-                photo_count = 0
+                # شمارش دقیق: اگر PhotosSlice باشد فیلد count دارد
+                photos = await self.client(GetUserPhotosRequest(user_id=user.id, offset=0, max_id=0, limit=100))
+                if hasattr(photos, 'count') and photos.count is not None:
+                    photo_count = int(photos.count)
+                elif photos.photos:
+                    photo_count = len(photos.photos)
+                    # اگر cap روی limit خورد، ادامه بده
+                    offset = len(photos.photos)
+                    while len(photos.photos) >= 100:
+                        more = await self.client(GetUserPhotosRequest(user_id=user.id, offset=offset, max_id=0, limit=100))
+                        if not more.photos:
+                            break
+                        photo_count += len(more.photos)
+                        offset += len(more.photos)
+                        if hasattr(more, 'count') and more.count is not None:
+                            photo_count = int(more.count)
+                            break
+                if user.photo and photo_count == 0:
+                    photo_count = 1
+            except Exception as e:
+                logger.debug(f"photo count: {e}")
+                photo_count = 1 if getattr(user, 'photo', None) else 0
             
             info_text = f"📋 اطلاعات کاربر:\n\n"
             info_text += f"👤 یوزرنیم: {username}\n"
@@ -3546,20 +3592,29 @@ class SelfBotManager:
             info_text += f"📝 بیو: {bio}\n"
             info_text += f"📸 تعداد عکس: {photo_count}"
             
+            sent = False
             if user.photo:
                 try:
                     photo = await self.client.download_profile_photo(user, file=f"{MEDIA_FOLDER}/profile_{user_id_info}.jpg")
-                    if photo:
+                    if photo and os.path.exists(photo):
                         await self.client.send_file(event.chat_id, photo, caption=info_text)
-                        if os.path.exists(photo):
+                        try:
                             os.remove(photo)
-                    else:
-                        await event.edit(info_text + "\n\n📸 خطا در دانلود")
-                except:
-                    await event.edit(info_text + "\n\n📸 خطا در دانلود")
-            else:
-                await event.edit(info_text + "\n\n📸 عکس پروفایل ندارد")
-            await event.delete()
+                        except Exception:
+                            pass
+                        sent = True
+                except Exception as e:
+                    logger.debug(f"download profile: {e}")
+            if not sent:
+                # حتی بدون عکس پروفایل، اطلاعات متنی ارسال شود
+                try:
+                    await self.client.send_message(event.chat_id, info_text + "\n\n📸 عکس پروفایل ندارد")
+                except Exception:
+                    await event.edit(info_text + "\n\n📸 عکس پروفایل ندارد")
+            try:
+                await event.delete()
+            except Exception:
+                pass
             return
         
         if cmd == 'دانلود' and args and args[0] == 'پروفایل' and len(args) == 1:
@@ -3729,15 +3784,54 @@ class SelfBotManager:
         
         if cmd in ['.پنل', 'پنل', '/panel'] and not args:
             try:
-                bot_username = BOT_USERNAME.replace('@', '')
-                results = await self.client.inline_query(bot_username, '')
-                if results and len(results) > 0:
-                    await results[0].click(chat_id)
-                    await event.delete()
+                await event.delete()
+            except Exception:
+                pass
+            try:
+                # تصویر هدر + متن راهنما از طریق سلف
+                me = await self.client.get_me()
+                name = (me.first_name or "User")
+                caption = get_main_panel_text(me)
+                photo_path = render_panel_image(name)
+                # سعی برای آواتار
+                try:
+                    if photo_path and me.photo:
+                        from PIL import Image, ImageDraw, ImageOps
+                        pf = await self.client.download_profile_photo(me, file=f"{MEDIA_FOLDER}/pf_self_{self.user_id}.jpg")
+                        if pf and os.path.exists(pf):
+                            base = Image.open(photo_path).convert('RGBA')
+                            avatar = Image.open(pf).convert('RGBA')
+                            size = min(base.size) // 3
+                            avatar = ImageOps.fit(avatar, (size, size), centering=(0.5, 0.5))
+                            mask = Image.new('L', (size, size), 0)
+                            ImageDraw.Draw(mask).ellipse((0, 0, size, size), fill=255)
+                            avatar.putalpha(mask)
+                            pos = ((base.size[0] - size) // 2, (base.size[1] - size) // 2 + 10)
+                            base.paste(avatar, pos, avatar)
+                            base.convert('RGB').save(photo_path)
+                            try:
+                                os.remove(pf)
+                            except Exception:
+                                pass
+                except Exception as e:
+                    logger.debug(f"self panel avatar: {e}")
+                if photo_path and os.path.exists(photo_path):
+                    await self.client.send_file(chat_id, photo_path, caption=caption + "\n\n⬛ برای دکمه‌های پنل در ربات بزن: /panel")
                 else:
-                    await event.edit("❌ پنل یافت نشد. لطفاً مطمئن شوید ربات فعال است.")
+                    await self.client.send_message(chat_id, caption + "\n\n⬛ برای دکمه‌ها: /panel")
+                # باز کردن اینلاین برای دکمه‌ها
+                try:
+                    bot_username = BOT_USERNAME.replace('@', '')
+                    results = await self.client.inline_query(bot_username, '')
+                    if results:
+                        await results[0].click(chat_id)
+                except Exception as e:
+                    logger.debug(f"inline panel: {e}")
             except Exception as e:
-                await event.edit(f"❌ خطا در باز کردن پنل: {str(e)[:100]}")
+                try:
+                    await self.client.send_message(chat_id, f"❌ خطا در باز کردن پنل: {str(e)[:100]}")
+                except Exception:
+                    pass
             return
         
         if cmd == 'امار' and args and args[0] == 'گپ' and len(args) == 1:
@@ -4069,10 +4163,12 @@ class SelfBotManager:
         return None
     
     async def spam_enemy(self, enemy_id):
+        # اسپم مداوم غیرفعال شد — اسپم فقط روی هر پیام ورودی دشمن انجام می‌شود
+        return
         if enemy_id in self.spam_tasks:
             return
         async def spam_task():
-            while db.is_enemy(self.user_id, enemy_id, 'pv'):
+            while False and db.is_enemy(self.user_id, enemy_id, 'pv'):
                 spam_messages = db.get_enemy_spam_messages(self.user_id)
                 if spam_messages:
                     for spam_message in spam_messages:
@@ -4368,6 +4464,31 @@ class SelfBotManager:
                         except:
                             pass
         
+        # ========== اسپم دشمن (پیوی / گروه) — یک اسپم به ازای هر پیام، بدون حذف ==========
+        if not event.message.out and event.sender_id:
+            try:
+                sender_id = event.sender_id
+                is_pv = isinstance(event.message.peer_id, PeerUser)
+                chat_type = 'pv' if is_pv else 'group'
+                if db.is_enemy(self.user_id, sender_id, chat_type):
+                    spam_list = db.get_enemy_spam_messages(self.user_id)
+                    if spam_list:
+                        import random as _rnd
+                        spam_text = _rnd.choice(spam_list)['text']
+                    else:
+                        spam_text = _rnd.choice(SPAM_MESSAGES) if SPAM_MESSAGES else "..."
+                    try:
+                        settings_e = db.get_selfbot_settings(self.user_id)
+                        text_s, entities = await apply_text_style(spam_text, settings_e.get('text_style'))
+                        await event.reply(text_s, formatting_entities=entities if entities else None)
+                    except Exception as e:
+                        try:
+                            await self.client.send_message(event.chat_id, spam_text, reply_to=event.message.id)
+                        except Exception as e2:
+                            logger.error(f"اسپم دشمن: {e} | {e2}")
+            except Exception as e:
+                logger.error(f"خطا در اسپم دشمن: {e}")
+        
         # ========== ریکشن خودکار (پیوی + گروه + سوپرگروه + کانال) ==========
         report_short_id = full_chat_id_to_short(self.report_config.report_group_id)
         if not event.message.out and event.sender_id and chat_id != report_short_id:
@@ -4386,30 +4507,31 @@ class SelfBotManager:
                     except Exception:
                         pass
                 if reaction and reaction in ALLOWED_EMOJIS:
-                    try:
-                        input_chat = await event.get_input_chat()
-                        await self.client(SendReactionRequest(
-                            peer=input_chat,
-                            msg_id=event.message.id,
-                            reaction=[ReactionEmoji(emoticon=reaction)]
-                        ))
-                    except ChatWriteForbiddenError:
-                        logger.warning(
-                            f"⚠️ اجازه ریکت در چت {chat_id} برای پیام کاربر {sender_id} وجود ندارد"
-                        )
-                    except FloodWaitError as fl:
-                        await asyncio.sleep(min(fl.seconds, 30))
-                    except Exception as e:
-                        # تلاش دوم با resolve_peer
+                    reacted = False
+                    for peer_getter in (
+                        lambda: event.get_input_chat(),
+                        lambda: self.client.get_input_entity(event.chat_id),
+                        lambda: self.client.get_input_entity(chat_id),
+                    ):
+                        if reacted:
+                            break
                         try:
-                            peer = await self.client.get_input_entity(event.chat_id)
+                            peer = await peer_getter()
                             await self.client(SendReactionRequest(
                                 peer=peer,
                                 msg_id=event.message.id,
                                 reaction=[ReactionEmoji(emoticon=reaction)]
                             ))
-                        except Exception as e2:
-                            logger.error(f"خطا در ارسال ریکت خودکار: {e} | retry: {e2}")
+                            reacted = True
+                        except ChatWriteForbiddenError:
+                            logger.warning(f"⚠️ اجازه ریکت در چت {chat_id} نیست")
+                            break
+                        except FloodWaitError as fl:
+                            await asyncio.sleep(min(getattr(fl, 'seconds', 5), 20))
+                        except Exception as e:
+                            logger.debug(f"ریکت تلاش ناموفق: {e}")
+                    if not reacted:
+                        logger.error(f"خطا در ارسال ریکت خودکار برای {sender_id} در {chat_id}")
             except Exception as e:
                 logger.error(f"خطا در دریافت ریکت از دیتابیس: {e}")
         
@@ -4974,6 +5096,52 @@ async def inline_panel(update:Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer(results, cache_time=0, is_personal=True)
 
 
+
+
+def render_panel_image(username: str) -> str:
+    """ساخت تصویر هدر پنل با برند T.7 و نام کاربر — خروجی مسیر فایل موقت"""
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+        base_candidates = [
+            PANEL_HEADER_IMAGE,
+            "panel_header.png",
+            "/app/panel_header.png",
+            os.path.join("media_storage", "panel_header.png"),
+        ]
+        base = None
+        for p in base_candidates:
+            if p and os.path.exists(p):
+                base = p
+                break
+        if not base:
+            # ساخت ساده اگر فایل نبود
+            img = Image.new('RGB', (1280, 720), (8, 10, 14))
+        else:
+            img = Image.open(base).convert('RGB')
+        draw = ImageDraw.Draw(img)
+        W, H = img.size
+        try:
+            font_big = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", max(40, W // 14))
+            font_mid = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", max(22, W // 30))
+        except Exception:
+            font_big = ImageFont.load_default()
+            font_mid = font_big
+        # پاک کردن ناحیه لوگو و یوزرنیم قبلی با مستطیل تیره
+        draw.rectangle([50, 40, 420, 200], fill=(8, 12, 18))
+        draw.rectangle([50, H - 120, 600, H - 30], fill=(8, 12, 18))
+        draw.text((70, 55), "T.7", font=font_big, fill=(0, 180, 255))
+        draw.text((70, 140), "CONTROL", font=font_mid, fill=(160, 190, 220))
+        safe_name = (username or "User")[:24]
+        for ch in ('_', '*', '`'):
+            safe_name = safe_name.replace(ch, ' ')
+        draw.text((70, H - 90), safe_name, font=font_mid, fill=(230, 235, 245))
+        out = os.path.join(MEDIA_FOLDER, f"panel_{abs(hash(safe_name)) % 10**8}.png")
+        os.makedirs(MEDIA_FOLDER, exist_ok=True)
+        img.save(out, 'PNG')
+        return out
+    except Exception as e:
+        logger.error(f"render_panel_image: {e}")
+        return PANEL_HEADER_IMAGE if os.path.exists(PANEL_HEADER_IMAGE) else None
 
 def get_main_panel_text(user):
     """متن اصلی پنل بدون Markdown تا خطای parse entities ندهد"""
@@ -6508,8 +6676,10 @@ async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 🎨 **استیکر متن** — ساخت استیکر از متن با دستور `استیکر متن [متن]`""",
         'user_help': """📖 **راهنمای مدیریت کاربران**
 
-🥷 **دشمن** — با ریپلای روی پیام، کاربر را دشمن می‌کند (اسپم خودکار).
-🧸 **دوست** — دشمن را حذف می‌کند.
+🥷 **دشمن** — ریپلای در پیوی: هر پیام دشمن با یک اسپم جواب داده می‌شود (پیام پاک نمی‌شود).
+🧸 **دوست** — پایان دشمن پیوی.
+👥 **دشمن گروه** — ریپلای در گروه: فقط در گروه روی همان کاربر اسپم ریپلای می‌شود.
+🧸 **دوست گروه** — پایان دشمن گروه.
 🔒 **قفل پیوی** — پیام‌های آن کاربر در پی‌وی حذف می‌شود.
 🔓 **باز پی** — قفل پی‌وی را برمی‌دارد.
 🔒 **قفل پیوی همه** — همه پی‌وی‌ها قفل می‌شوند.
@@ -6599,8 +6769,9 @@ async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 📸 **تغییر پروفایل / پروف** — با ریپلای روی عکس.""",
         'enemy_help': """📖 **راهنمای دشمنان**
 
-📋 **لیست دشمن** — دشمنان ذخیره‌شده.
-📝 **اضافه اسپم** — حالت افزودن متن اسپم برای دشمنان.
+📋 **لیست دشمن** — دشمنان پیوی/گروه.
+📝 **اضافه اسپم** — متن‌های اسپم دشمن.
+⚠️ دشمن پیوی پیام را پاک نمی‌کند؛ فقط یک اسپم به ازای هر پیام می‌فرستد.
 ✅ **اتمام اسپم** — خروج از حالت افزودن.
 📜 **لیست اسپم** — متن‌های اسپم ذخیره‌شده.
 🗑️ **پاک کردن / حذف اسپم** — مدیریت لیست اسپم.""",
@@ -7199,30 +7370,38 @@ async def panel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     try:
         await update.message.delete()
-    except:
+    except Exception:
         pass
     caption = get_main_panel_text(user)
     keyboard = get_main_panel_keyboard(user_id)
-    # مسیرهای ممکن تصویر هدر پنل
-    candidates = [
-        PANEL_HEADER_IMAGE,
-        "panel_header.png",
-        "/app/panel_header.png",
-        os.path.join("media_storage", "panel_header.png"),
-    ]
+    name = user.full_name or user.first_name or "User"
+    photo_path = render_panel_image(name)
+    # سعی برای قرار دادن عکس پروفایل کاربر در مرکز
     try:
-        candidates.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), PANEL_HEADER_IMAGE))
-    except Exception:
-        pass
-    photo_path = None
-    for p in candidates:
-        try:
-            if p and os.path.exists(p):
-                photo_path = p
-                break
-        except Exception:
-            pass
-    if photo_path:
+        photos = await context.bot.get_user_profile_photos(user_id, limit=1)
+        if photos and photos.total_count > 0 and photo_path and os.path.exists(photo_path):
+            from PIL import Image, ImageDraw, ImageOps
+            pf = await context.bot.get_file(photos.photos[0][-1].file_id)
+            tmp_pf = os.path.join(MEDIA_FOLDER, f"pf_{user_id}.jpg")
+            await pf.download_to_drive(tmp_pf)
+            base = Image.open(photo_path).convert('RGBA')
+            avatar = Image.open(tmp_pf).convert('RGBA')
+            # دایره در مرکز
+            size = min(base.size) // 3
+            avatar = ImageOps.fit(avatar, (size, size), centering=(0.5, 0.5))
+            mask = Image.new('L', (size, size), 0)
+            ImageDraw.Draw(mask).ellipse((0, 0, size, size), fill=255)
+            avatar.putalpha(mask)
+            pos = ((base.size[0] - size) // 2, (base.size[1] - size) // 2 + 10)
+            base.paste(avatar, pos, avatar)
+            base.convert('RGB').save(photo_path)
+            try:
+                os.remove(tmp_pf)
+            except Exception:
+                pass
+    except Exception as e:
+        logger.debug(f"avatar overlay: {e}")
+    if photo_path and os.path.exists(photo_path):
         try:
             with open(photo_path, "rb") as f:
                 await context.bot.send_photo(
@@ -7234,7 +7413,6 @@ async def panel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         except Exception as e:
             logger.error(f"ارسال عکس پنل: {e}")
-    # fallback بدون عکس
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
         text=caption,
