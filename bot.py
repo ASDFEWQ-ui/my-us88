@@ -99,7 +99,7 @@ def home():
     return jsonify({
         "status": "running",
         "bot": "T.7",
-        "version": "4.9.1"
+        "version": "4.9.2"
     })
 
 @flask_app.route('/health')
@@ -253,7 +253,7 @@ SPAM_MESSAGES = [
     "کس ننت چنان بازه، کل شهر توش چادر زدن",
 ]
 
-BOT_VERSION = "4.9.1"
+BOT_VERSION = "4.9.2"
 BOT_CREATOR = "T.7"
 PANEL_HEADER_IMAGE = "panel_header.png"  # تصویر بالای پنل
 
@@ -3815,13 +3815,15 @@ class SelfBotManager:
                                 pass
                 except Exception as e:
                     logger.debug(f"self panel avatar: {e}")
+                bot_username = BOT_USERNAME.replace('@', '')
+                # یک پیام واحد: عکس + توضیح — دکمه‌ها فقط از ربات با /panel
+                extra = f"\n\n⬛ دکمه‌های کنترل:\nدر ربات @{bot_username} بنویس: پنل\nیا /panel"
                 if photo_path and os.path.exists(photo_path):
-                    await self.client.send_file(chat_id, photo_path, caption=caption + "\n\n⬛ برای دکمه‌های پنل در ربات بزن: /panel")
+                    await self.client.send_file(chat_id, photo_path, caption=caption + extra)
                 else:
-                    await self.client.send_message(chat_id, caption + "\n\n⬛ برای دکمه‌ها: /panel")
-                # باز کردن اینلاین برای دکمه‌ها
+                    await self.client.send_message(chat_id, caption + extra)
+                # تلاش برای اینلاین (متن+دکمه) در صورت امکان
                 try:
-                    bot_username = BOT_USERNAME.replace('@', '')
                     results = await self.client.inline_query(bot_username, '')
                     if results:
                         await results[0].click(chat_id)
@@ -5006,9 +5008,24 @@ async def inline_panel(update:Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = query.from_user.id
     user_data = db.get_user(str(user_id))
     has_access = False
-    if user_data and user_data.get('self_active'):
+    if user_id == ADMIN_ID:
         has_access = True
-    elif str(user_id) in selfbot_managers and selfbot_managers[str(user_id)].running:
+    elif user_data:
+        sa = user_data.get('self_active')
+        # sqlite ممکن است 1 / "1" / True برگرداند
+        if sa in (1, "1", True, "true", "True"):
+            has_access = True
+        elif user_data.get('admin_approved') in (1, "1", True) and user_data.get('session_file'):
+            # بعد از بکاپ اگر سشن هست دسترسی بده
+            sf = user_data.get('session_file')
+            if sf and os.path.exists(sf):
+                has_access = True
+                # فعال‌سازی خودکار
+                try:
+                    db.update_user(str(user_id), self_active=1)
+                except Exception:
+                    pass
+    if not has_access and str(user_id) in selfbot_managers and getattr(selfbot_managers[str(user_id)], 'running', False):
         has_access = True
     
     if not has_access:
@@ -5099,49 +5116,48 @@ async def inline_panel(update:Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def render_panel_image(username: str) -> str:
-    """ساخت تصویر هدر پنل با برند T.7 و نام کاربر — خروجی مسیر فایل موقت"""
+    """هدر پنل T.7 با نام کاربر — فونت درشت و تم تیره"""
     try:
-        from PIL import Image, ImageDraw, ImageFont
-        base_candidates = [
-            PANEL_HEADER_IMAGE,
-            "panel_header.png",
-            "/app/panel_header.png",
-            os.path.join("media_storage", "panel_header.png"),
-        ]
-        base = None
-        for p in base_candidates:
-            if p and os.path.exists(p):
-                base = p
-                break
-        if not base:
-            # ساخت ساده اگر فایل نبود
-            img = Image.new('RGB', (1280, 720), (8, 10, 14))
-        else:
-            img = Image.open(base).convert('RGB')
+        from PIL import Image, ImageDraw, ImageFont, ImageFilter
+        W, H = 1280, 720
+        img = Image.new('RGB', (W, H), (6, 8, 12))
         draw = ImageDraw.Draw(img)
-        W, H = img.size
+        # گرادیان ساده
+        for y in range(H):
+            c = int(6 + (y / H) * 22)
+            draw.line([(0, y), (W, y)], fill=(c, c + 3, c + 10))
+        blue = (0, 200, 255)
+        # قاب
+        draw.rectangle([16, 16, W-16, H-16], outline=blue, width=4)
+        draw.rectangle([32, 32, W-32, H-32], outline=(0, 90, 140), width=2)
         try:
-            font_big = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", max(40, W // 14))
-            font_mid = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", max(22, W // 30))
+            font_xl = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 120)
+            font_lg = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 48)
+            font_md = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 40)
         except Exception:
-            font_big = ImageFont.load_default()
-            font_mid = font_big
-        # پاک کردن ناحیه لوگو و یوزرنیم قبلی با مستطیل تیره
-        draw.rectangle([50, 40, 420, 200], fill=(8, 12, 18))
-        draw.rectangle([50, H - 120, 600, H - 30], fill=(8, 12, 18))
-        draw.text((70, 55), "T.7", font=font_big, fill=(0, 180, 255))
-        draw.text((70, 140), "CONTROL", font=font_mid, fill=(160, 190, 220))
-        safe_name = (username or "User")[:24]
+            font_xl = ImageFont.load_default()
+            font_lg = font_xl
+            font_md = font_xl
+        draw.text((70, 50), "T.7", font=font_xl, fill=blue)
+        draw.text((70, 180), "CONTROL PANEL", font=font_lg, fill=(200, 220, 240))
+        # دایره مرکز
+        cx, cy, r = W // 2, H // 2 + 30, 170
+        draw.ellipse([cx-r-6, cy-r-6, cx+r+6, cy+r+6], outline=blue, width=5)
+        draw.ellipse([cx-r, cy-r, cx+r, cy+r], outline=(30, 50, 80), width=2)
+        safe_name = (username or "User")[:28]
         for ch in ('_', '*', '`'):
             safe_name = safe_name.replace(ch, ' ')
-        draw.text((70, H - 90), safe_name, font=font_mid, fill=(230, 235, 245))
+        draw.text((70, H - 110), safe_name, font=font_md, fill=(240, 245, 255))
+        draw.text((70, H - 160), "USER", font=font_md, fill=(100, 130, 160))
         out = os.path.join(MEDIA_FOLDER, f"panel_{abs(hash(safe_name)) % 10**8}.png")
         os.makedirs(MEDIA_FOLDER, exist_ok=True)
         img.save(out, 'PNG')
         return out
     except Exception as e:
         logger.error(f"render_panel_image: {e}")
-        return PANEL_HEADER_IMAGE if os.path.exists(PANEL_HEADER_IMAGE) else None
+        if os.path.exists(PANEL_HEADER_IMAGE):
+            return PANEL_HEADER_IMAGE
+        return None
 
 def get_main_panel_text(user):
     """متن اصلی پنل بدون Markdown تا خطای parse entities ندهد"""
@@ -5557,6 +5573,10 @@ def get_user_menu_keyboard(user_id):
         [
             InlineKeyboardButton("🥷 دشمن", callback_data=f"exec_enemy_{user_id}", style="danger"),
             InlineKeyboardButton("🧸 دوست", callback_data=f"exec_friend_{user_id}", style="success")
+        ],
+        [
+            InlineKeyboardButton("👥 دشمن گروه", callback_data=f"exec_enemy_group_{user_id}", style="danger"),
+            InlineKeyboardButton("🤝 دوست گروه", callback_data=f"exec_friend_group_{user_id}", style="success")
         ],
         [
             InlineKeyboardButton("🔒 قفل پیوی", callback_data=f"exec_lock_pv_{user_id}", style="danger"),
@@ -6079,7 +6099,7 @@ async def _button_callback_impl(update: Update, context: ContextTypes.DEFAULT_TY
             "font": ("🔤 **انتخاب فونت تایم**\n\nفونت‌های انتخاب‌شده به ترتیب در پروفایل چرخش می‌کنند.", get_font_menu_keyboard),
             "flag": ("🏳️ **انتخاب پرچم**\n\nپرچم‌های انتخاب‌شده در تایمر پرچم استفاده می‌شوند.", get_flag_menu_keyboard),
             "animation": ("☻ انیمیشن‌ها\n\n• قلب\n• ماه\n• قلب پیشرفته\n• عشق\n• سنتت\n• هک\n• استیکر متن", get_animation_menu_keyboard),
-            "user": ("☗ مدیریت کاربران\n\n• دشمن (ریپلای)\n• دوست (ریپلای)\n• قفل پیوی (ریپلای)\n• باز پی (ریپلای)\n• قفل پیوی همه\n• باز پی همه\n• بلاک", get_user_menu_keyboard),
+            "user": ("☗ مدیریت کاربران\n\n• دشمن / دوست (پیوی)\n• دشمن گروه / دوست گروه\n• قفل پیوی (ریپلای)\n• باز پی (ریپلای)\n• قفل پیوی همه\n• باز پی همه\n• بلاک", get_user_menu_keyboard),
             "lock": ("⊖ قفل رسانه (با ریپلای برای کاربر خاص)\n\n• قفل لینک\n• قفل عکس\n• قفل ویدیو\n• قفل استیکر\n• قفل گیف\n• قفل ویس\n• قفل فایل\n• قفل موزیک\n• قفل ویدیو نوت\n• قفل کانتکت\n• قفل لوکیشن\n• قفل ایموجی\n• قفل متن", get_lock_menu_keyboard),
             "comment": ("✼ کامنت خودکار\n\n• کامنت [متن]\n• کانال‌ها\n• حذف کانال\n• تست کانال", get_comment_menu_keyboard),
             "general": ("✿ دستورات عمومی\n\n• وضعیت\n• درباره\n• پینگ", get_general_menu_keyboard),
@@ -6979,10 +6999,16 @@ async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         return
     
     if cmd == 'enemy':
-        await msg.edit_text("⚠️ روی پیام کاربر ریپلای کنید و دستور دشمن را ارسال کنید")
+        await msg.edit_text("⚠️ روی پیام کاربر ریپلای کنید و در سلف بنویسید:\nدشمن")
         return
     if cmd == 'friend':
-        await msg.edit_text("⚠️ روی پیام کاربر ریپلای کنید و دستور دوست را ارسال کنید")
+        await msg.edit_text("⚠️ روی پیام کاربر ریپلای کنید و در سلف بنویسید:\nدوست")
+        return
+    if cmd == 'enemy_group':
+        await msg.edit_text("⚠️ در گروه روی پیام کاربر ریپلای کنید و بنویسید:\nدشمن گروه\n\nهر پیامش با یک اسپم ریپلای می‌شود (پیوی جداست)")
+        return
+    if cmd == 'friend_group':
+        await msg.edit_text("⚠️ در گروه روی پیام کاربر ریپلای کنید و بنویسید:\nدوست گروه")
         return
     if cmd == 'lock_pv':
         await msg.edit_text("⚠️ روی پیام کاربر ریپلای کنید و دستور قفل پیوی را ارسال کنید")
@@ -7365,9 +7391,22 @@ async def panel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_id = user.id
     user_data = db.get_user(str(user_id))
-    if not user_data or not user_data.get('self_active'):
+    sa = user_data.get('self_active') if user_data else None
+    allowed = False
+    if user_id == ADMIN_ID:
+        allowed = True
+    elif user_data and sa in (1, "1", True):
+        allowed = True
+    elif user_data and user_data.get('session_file') and os.path.exists(str(user_data.get('session_file'))):
+        allowed = True
+        try:
+            db.update_user(str(user_id), self_active=1)
+        except Exception:
+            pass
+    if not allowed:
         await update.message.reply_text("⛔ شما عضو سرویس نیستید")
         return
+
     try:
         await update.message.delete()
     except Exception:
@@ -7510,20 +7549,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_data.get('rejected'):
         await update.message.reply_text("✖ درخواست شما رد شده است")
         return
-    if user_data.get('self_active'):
+    if user_data.get('self_active') in (1, "1", True) or user_data.get('self_active'):
+        # باز کردن پنل با تصویر + دکمه‌ها یکجا
+        if text.strip() in ('پنل', 'panel', '/panel', '.پنل'):
+            await panel_command(update, context)
+            return
         if user_id_str not in selfbot_managers:
             session_file = user_data.get('session_file')
             if session_file and os.path.exists(session_file):
                 manager = SelfBotManager(user_id_str)
                 if await manager.start(session_file):
                     selfbot_managers[user_id_str] = manager
-                    await update.message.reply_text("🚀 سلف‌بات فعال شد")
+                    await update.message.reply_text("🚀 سلف‌بات فعال شد\nبرای پنل بنویس: پنل")
                 else:
                     await update.message.reply_text("⚠️ خطا در شروع سلف‌بات")
             else:
-                await update.message.reply_text("⚠️ فایل سشن یافت نشد")
+                await update.message.reply_text("⚠️ فایل سشن یافت نشد — از پنل ادمین بکاپ را دوباره آپلود کنید")
         else:
-            await update.message.reply_text("✅ سلف‌بات در حال اجراست")
+            await update.message.reply_text("✅ سلف‌بات در حال اجراست\nبرای پنل بنویس: پنل")
         return
     step = user_data.get('step')
     if step == 'get_phone':
@@ -7780,7 +7823,7 @@ async def process_restore_file(update: Update, context: ContextTypes.DEFAULT_TYP
                     elif f == REPORT_CONFIG_FILE or f.endswith(".json") and f.startswith("state_"):
                         shutil.copy2(src, f)
                         extracted.append(f)
-                    elif "user_sessions" in root or f.endswith(".session"):
+                    elif "user_sessions" in root or f.endswith(".session") or f.endswith(".session-journal"):
                         os.makedirs(SESSIONS_FOLDER, exist_ok=True)
                         dest = os.path.join(SESSIONS_FOLDER, f)
                         shutil.copy2(src, dest)
@@ -7825,6 +7868,23 @@ async def process_restore_file(update: Update, context: ContextTypes.DEFAULT_TYP
                     if uid in f and f.endswith('.session'):
                         db.update_user(uid, session_file=os.path.join(SESSIONS_FOLDER, f))
                         break
+        # همه کاربرانی که سشن دارند را فعال علامت بزن
+        try:
+            all_u = db.get_all_users()
+            for u in all_u:
+                uid = str(u['user_id'])
+                exp = os.path.join(SESSIONS_FOLDER, f"user_{uid}.session")
+                if os.path.exists(exp):
+                    db.update_user(uid, self_active=1, session_file=exp, admin_approved=1)
+                else:
+                    # جستجو
+                    if os.path.exists(SESSIONS_FOLDER):
+                        for fn in os.listdir(SESSIONS_FOLDER):
+                            if uid in fn and fn.endswith('.session'):
+                                db.update_user(uid, self_active=1, session_file=os.path.join(SESSIONS_FOLDER, fn), admin_approved=1)
+                                break
+        except Exception as e:
+            logger.error(f"reactivate users: {e}")
         active_users = db.get_active_users()
         success = 0
         fail = 0
@@ -8141,7 +8201,7 @@ async def global_error_handler(update: object, context: ContextTypes.DEFAULT_TYP
 
 async def main():
     print("=" * 60)
-    print("🤖 T.7 Self-Bot System v4.8.0")
+    print("🤖 T.7 Self-Bot System v4.9.1")
     print(f"👑 ادمین: {ADMIN_ID}")
     print(f"📁 پوشه سشن‌ها: {SESSIONS_FOLDER}")
     print("=" * 60)
