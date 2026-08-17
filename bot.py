@@ -1,4 +1,3 @@
-
 import os
 import sqlite3
 import logging
@@ -6976,4 +6975,4 @@ if __name__ == '__main__':
         logger.info("🛑 ربات متوقف شد")
     except Exception as e:
         logger.error(f"❌ خطای fatal: {e}")
-[file content end]
+
