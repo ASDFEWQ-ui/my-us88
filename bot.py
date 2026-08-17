@@ -77,14 +77,14 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Mess
 from telegram.request import HTTPXRequest
 from telethon import TelegramClient, events, types
 from telethon.tl.types import PeerUser, PeerChannel, PeerChat, MessageMediaPhoto, MessageMediaDocument, ReactionEmoji, MessageEntityBold, MessageEntityUnderline, MessageEntityStrike, MessageEntityBlockquote, MessageEntitySpoiler, MessageEntityItalic, MessageEntityCode, MessageEntityPre, InputMediaDice
-from telethon.tl.functions.messages import SendReactionRequest, DeleteMessagesRequest, SetTypingRequest
+from telethon.tl.functions.messages import SendReactionRequest, DeleteMessagesRequest, SetTypingRequest, ToggleDialogPinRequest
 from telethon.tl.functions.account import UpdateProfileRequest, UpdateStatusRequest, GetAuthorizationsRequest
 from telethon.tl.functions.contacts import BlockRequest, UnblockRequest
 from telethon.tl.functions.photos import UploadProfilePhotoRequest, DeletePhotosRequest, GetUserPhotosRequest
 from telethon.tl.functions.users import GetFullUserRequest
 from telethon.errors import FloodWaitError, SessionPasswordNeededError, ChatWriteForbiddenError
-from telethon.tl.functions.channels import GetParticipantsRequest
-from telethon.tl.types import ChannelParticipantsAdmins
+from telethon.tl.functions.channels import GetParticipantsRequest, CreateChannelRequest, EditPhotoRequest
+from telethon.tl.types import ChannelParticipantsAdmins, InputPeerEmpty
 import psutil
 from platform import python_version, uname
 from currency_converter import CurrencyConverter
@@ -99,7 +99,7 @@ def home():
     return jsonify({
         "status": "running",
         "bot": "VROOM",
-        "version": "4.9.5"
+        "version": "4.9.6"
     })
 
 @flask_app.route('/health')
@@ -253,9 +253,9 @@ SPAM_MESSAGES = [
     "کس ننت چنان بازه، کل شهر توش چادر زدن",
 ]
 
-BOT_VERSION = "4.9.5"
+BOT_VERSION = "4.9.6"
 BOT_CREATOR = "VROOM"
-PANEL_HEADER_IMAGE = "panel_header.png"  # تصویر بالای پنل
+PANEL_HEADER_IMAGE = "panel_header.png"  # تصویر بالای پنل (تصویر جدید VROOM)
 
 HEARTS = ["❤️", "🧡", "💛", "💚", "💙", "💜", "🤍"]
 MOONS = ["🌒", "🌓", "🌔", "🌕", "🌖", "🌗", "🌘", "🌑"]
@@ -1709,7 +1709,7 @@ async def get_ai_response(text, ai_type, user_id=None):
         pass
     return None
 
-COMMAND_KEYWORDS = ('لیست', 'شروع', 'تایم', 'قلب', 'ماه', 'اطلاعات', 'دانلود', 'تاریخ', 'فعال', 'غیرفعال', 'حذف', 'ست', 'بولد', 'زیرخط', 'خط خورده', 'نقل قول', 'اسپویلر', 'کج', 'کد', 'پیش', 'اسپم', 'بلاک', 'ریکت', 'پیوی', 'گروه', 'درباره', 'من کی ام', 'قفل', 'باز', 'تنظیم', 'گروه گزارش', 'دشمن', 'دوست', 'دشمن گروه', 'دوست گروه', 'کانال', 'کامنت', 'تست', 'لیست دشمن', 'لیست اسپم', 'پاک کردن اسپم', 'حذف اسپم', 'اضافه اسپم', 'اتمام اسپم', 'تغییر اسم', 'تغییر بیو', 'تغییر پروفایل', 'پروف', 'اسپم روشن', 'اسپم خاموش', 'پینگ', 'سرچ', 'خروج سرچ', 'قلب پیشرفته', 'عشق', 'سنتت', 'هک', 'وضعیت', '.پنل', 'پنل', '/panel', '.اهنگ', 'تنظیم اسپم', 'سلف روشن', 'سلف خاموش', 'پین', 'تگ ادمین', 'امار گپ', '.کد', 'تقویم', 'فونت', 'انگلیسی', 'عربی', 'عبری', 'روسی', 'ترکی', 'اتوسین', 'تگ همه', 'لغو تگ', 'منشی', 'افزودن پاسخ', 'حذف پاسخ', 'لیست پاسخ', 'پاک کردن پاسخ‌ها', 'بولینگ', 'تاس', 'سه رنگ', 'شانس', 'تاریخ ساخت اکانت', 'نشست‌های فعال', 'اطلاعات سیستم', 'قیمت ارز', 'نرخ ارز', 'استیکر متن', 'اسکرین‌شات', 'تشخیص متن', 'ساعت در بیو', 'ساعت در بیو ۲', 'بیو تاریخ', 'بیو کامل', 'بیو عاشقانه')
+COMMAND_KEYWORDS = ('لیست', 'شروع', 'تایم', 'قلب', 'ماه', 'اطلاعات', 'دانلود', 'تاریخ', 'فعال', 'غیرفعال', 'حذف', 'ست', 'بولد', 'زیرخط', 'خط خورده', 'نقل قول', 'اسپویلر', 'کج', 'کد', 'پیش', 'اسپم', 'بلاک', 'ریکت', 'پیوی', 'گروه', 'درباره', 'من کی ام', 'قفل', 'باز', 'تنظیم', 'گروه گزارش', 'دشمن', 'دوست', 'دشمن گروه', 'دوست گروه', 'کانال', 'کامنت', 'تست', 'لیست دشمن', 'لیست اسپم', 'پاک کردن اسپم', 'حذف اسپم', 'اضافه اسپم', 'اتمام اسپم', 'تغییر اسم', 'تغییر بیو', 'تغییر پروفایل', 'پروف', 'اسپم روشن', 'اسپم خاموش', 'پینگ', 'سرچ', 'خروج سرچ', 'قلب پیشرفته', 'عشق', 'سنتت', 'هک', 'وضعیت', '.پنل', 'پنل', '/panel', '.اهنگ', 'تنظیم اسپم', 'سلف روشن', 'سلف خاموش', 'پین', 'تگ ادمین', 'امار گپ', '.کد', 'تقویم', 'فونت', 'انگلیسی', 'عربی', 'عبری', 'روسی', 'ترکی', 'اتوسین', 'تگ همه', 'لغو تگ', 'منشی', 'افزودن پاسخ', 'حذف پاسخ', 'لیست پاسخ', 'پاک کردن پاسخ‌ها', 'بولینگ', 'تاس', 'سه رنگ', 'شانس', 'تاریخ ساخت اکانت', 'نشست‌های فعال', 'اطلاعات سیستم', 'قیمت ارز', 'نرخ ارز', 'استیکر متن', 'ساخت استیکر', 'اسکرین‌شات', 'تشخیص متن', 'ساعت در بیو', 'ساعت در بیو ۲', 'بیو تاریخ', 'بیو کامل', 'بیو عاشقانه')
 
 # نگاشت زبان‌های فارسی به کدهای استاندارد ISO که deep_translator تضمینی می‌شناسد
 TRANSLATE_LANG_CODES = {
@@ -2165,6 +2165,12 @@ class SelfBotManager:
             
             asyncio.create_task(self.keep_alive_task())
             
+            # ساخت خودکار گروه گزارش در صورت نیاز (اولین ورود)
+            try:
+                asyncio.create_task(self.ensure_report_group())
+            except Exception as e:
+                logger.error(f"ensure_report_group schedule: {e}")
+            
             logger.info(f"✅ سلف‌بات برای کاربر {self.user_id} با موفقیت شروع شد")
             return True
             
@@ -2185,6 +2191,82 @@ class SelfBotManager:
                 self.client = None
             
             return False
+    
+    async def ensure_report_group(self):
+        """اگر گروه گزارش پیش‌فرض است، یک گروه خصوصی «گزارش دهی» می‌سازد،
+        آن را سنجاق می‌کند و راهنمای کوتاه می‌فرستد."""
+        try:
+            current = self.report_config.report_group_id
+            # فقط وقتی هنوز گروه پیش‌فرض است یا گروهی وجود ندارد
+            if current and current != GROUP_ID and current != 0:
+                # بررسی کن گروه هنوز در دسترس است
+                try:
+                    await self.client.get_entity(current)
+                    return  # گروه شخصی از قبل وجود دارد
+                except Exception:
+                    pass  # گروه قبلی از بین رفته → دوباره بساز
+            
+            logger.info(f"در حال ساخت گروه گزارش برای کاربر {self.user_id}...")
+            result = await self.client(CreateChannelRequest(
+                title="گزارش دهی",
+                about="گروه اختصاصی گزارش‌های سلف‌بات VROOM\nپیام‌های حذف‌شده، ویرایش‌شده و رسانه‌ها اینجا ذخیره می‌شوند.",
+                megagroup=True
+            ))
+            if not result or not result.chats:
+                logger.error("CreateChannelRequest نتیجه خالی برگرداند")
+                return
+            new_chat = result.chats[0]
+            # آیدی کامل سوپرگروه
+            full_id = int(f"-100{new_chat.id}")
+            self.report_config.set_report_group(full_id)
+            # ذخیره در تنظیمات سلف‌بات هم
+            try:
+                db.update_selfbot_setting(self.user_id, 'report_group_id', full_id)
+            except Exception:
+                pass
+            
+            guide = (
+                "📌 **گروه گزارش‌دهی اختصاصی شما**\n\n"
+                "از این لحظه تمام گزارش‌های سلف‌بات (پیام‌های حذف‌شده، ویرایش‌شده، رسانه‌ها و ...) "
+                "در همین گروه ارسال می‌شوند.\n\n"
+                "🔧 راهنمای سریع:\n"
+                "• برای تغییر گروه گزارش: داخل گروه موردنظر دستور `تنظیم گزارش` را بزنید.\n"
+                "• می‌توانید یک کانال سیو مسیج یا گروه دیگری هم تنظیم کنید.\n"
+                "• برای دیدن گروه فعلی: `گروه گزارش`\n\n"
+                "✅ این گروه برای شما سنجاق شده است."
+            )
+            try:
+                await self.client.send_message(full_id, guide)
+            except Exception as e:
+                logger.debug(f"ارسال راهنما: {e}")
+            
+            # سنجاق کردن چت (اگر لیست پین پر بود یکی را از پین دربیاور)
+            try:
+                peer = await self.client.get_input_entity(full_id)
+                # ابتدا سعی در پین
+                try:
+                    await self.client(ToggleDialogPinRequest(peer=peer, pinned=True))
+                except Exception as pin_err:
+                    # احتمالاً سقف پین پر است → یکی از پین‌های موجود را باز کن
+                    logger.debug(f"پین اول ناموفق: {pin_err}")
+                    try:
+                        dialogs = await self.client.get_dialogs(limit=30)
+                        pinned = [d for d in dialogs if getattr(d, 'pinned', False)]
+                        if pinned:
+                            # قدیمی‌ترین پین را باز کن
+                            old = pinned[-1]
+                            old_peer = await self.client.get_input_entity(old.entity)
+                            await self.client(ToggleDialogPinRequest(peer=old_peer, pinned=False))
+                            await asyncio.sleep(0.5)
+                            await self.client(ToggleDialogPinRequest(peer=peer, pinned=True))
+                    except Exception as e2:
+                        logger.debug(f"آزادسازی پین: {e2}")
+            except Exception as e:
+                logger.debug(f"سنجاق گروه گزارش: {e}")
+            
+            logger.info(f"✅ گروه گزارش {full_id} برای کاربر {self.user_id} ساخته و تنظیم شد")
+        except Exception as e:
+            logger.error(f"ensure_report_group error for {self.user_id}: {e}\n{traceback.format_exc()}")
     
     async def keep_alive_task(self):
         reconnect_attempts = 0
@@ -2728,6 +2810,77 @@ class SelfBotManager:
                 await event.delete()
             except Exception as e:
                 await event.edit(f"❌ خطا: {e}")
+            return
+        
+        # ========== ساخت استیکر با @QuotLyBot ==========
+        if cmd == 'ساخت' and args and args[0] == 'استیکر':
+            if not event.message.is_reply:
+                await event.edit("⚠️ روی پیام کاربر ریپلای کنید و بنویسید: ساخت استیکر")
+                return
+            try:
+                reply_msg = await event.get_reply_message()
+                if not reply_msg:
+                    await event.edit("❌ پیام ریپلای یافت نشد")
+                    return
+                await event.edit("⏳ در حال ساخت استیکر...")
+                quotly = await self.client.get_entity("QuotLyBot")
+                # فوروارد پیام به ربات
+                sent_to_bot = await self.client.forward_messages(quotly, reply_msg)
+                sent_id = sent_to_bot[0].id if isinstance(sent_to_bot, (list, tuple)) else sent_to_bot.id
+                # صبر برای پاسخ استیکر
+                sticker_msg = None
+                for _ in range(18):
+                    await asyncio.sleep(1.0)
+                    async for m in self.client.iter_messages(quotly, limit=8):
+                        if m.id <= sent_id:
+                            continue
+                        is_sticker = False
+                        if m.sticker:
+                            is_sticker = True
+                        elif m.document:
+                            mt = getattr(m.document, 'mime_type', '') or ''
+                            if mt in ('application/x-tgsticker', 'image/webp', 'video/webm'):
+                                is_sticker = True
+                            attrs = getattr(m.document, 'attributes', None) or []
+                            for a in attrs:
+                                if type(a).__name__ in ('DocumentAttributeSticker', 'DocumentAttributeAnimated'):
+                                    is_sticker = True
+                                    break
+                        if is_sticker:
+                            sticker_msg = m
+                            break
+                    if sticker_msg:
+                        break
+                if sticker_msg and sticker_msg.media:
+                    # ارسال استیکر بدون متن و بدون فوروارد، با ریپلای روی همان پیام کاربر
+                    await self.client.send_file(
+                        event.chat_id,
+                        sticker_msg.media,
+                        reply_to=reply_msg.id,
+                        caption=None,
+                        force_document=False
+                    )
+                    try:
+                        await event.delete()
+                    except Exception:
+                        pass
+                else:
+                    await event.edit("❌ استیکر از QuotLyBot دریافت نشد. دوباره امتحان کنید.")
+                # پاک کردن کامل چت با ربات (حذف پیام‌های اخیر تا اثری نماند)
+                try:
+                    msgs_to_del = []
+                    async for m in self.client.iter_messages(quotly, limit=25):
+                        msgs_to_del.append(m.id)
+                    if msgs_to_del:
+                        await self.client.delete_messages(quotly, msgs_to_del)
+                except Exception as del_e:
+                    logger.debug(f"پاک کردن چت QuotLy: {del_e}")
+            except Exception as e:
+                logger.error(f"ساخت استیکر: {e}\n{traceback.format_exc()}")
+                try:
+                    await event.edit(f"❌ خطا در ساخت استیکر: {str(e)[:100]}")
+                except Exception:
+                    pass
             return
         
         
@@ -4473,7 +4626,7 @@ class SelfBotManager:
                         except:
                             pass
         
-        # ========== اسپم دشمن (پیوی / گروه) — یک اسپم به ازای هر پیام، بدون حذف ==========
+        # ========== اسپم دشمن (پیوی / گروه) — یک اسپم تصادفی به ازای هر پیام، بدون تکرار پشت‌سرهم ==========
         if not event.message.out and event.sender_id:
             try:
                 sender_id = int(event.sender_id)
@@ -4481,12 +4634,22 @@ class SelfBotManager:
                 chat_type = 'pv' if is_pv else 'group'
                 if db.is_enemy(self.user_id, sender_id, chat_type):
                     spam_list = db.get_enemy_spam_messages(self.user_id)
+                    candidates = []
                     if spam_list:
-                        spam_text = random.choice(spam_list)['text']
+                        candidates = [s['text'] for s in spam_list]
                     elif SPAM_MESSAGES:
-                        spam_text = random.choice(SPAM_MESSAGES)
+                        candidates = list(SPAM_MESSAGES)
+                    if not candidates:
+                        candidates = ["..."]
+                    # جلوگیری از تکرار پشت‌سرهم همان متن برای یک دشمن
+                    last_key = f"_last_spam_{sender_id}_{chat_type}"
+                    last_text = getattr(self, last_key, None)
+                    if len(candidates) > 1 and last_text in candidates:
+                        choices = [c for c in candidates if c != last_text]
+                        spam_text = random.choice(choices)
                     else:
-                        spam_text = "..."
+                        spam_text = random.choice(candidates)
+                    setattr(self, last_key, spam_text)
                     sent = False
                     try:
                         settings_e = db.get_selfbot_settings(self.user_id)
@@ -5124,7 +5287,7 @@ async def inline_panel(update:Update, context: ContextTypes.DEFAULT_TYPE):
             ("⚉ حفاظت اسپم", "protection", "محافظت در برابر اسپم"),
             ("☥ هوش مصنوعی", "ai", "مدیریت هوش مصنوعی"),
             ("֎ گزارش", "report", "تنظیم گروه گزارش"),
-            ("🛠 ابزار", "tools", "امار گپ / کد QR / تگ ادمین / پین / سلف روشن/خاموش"),
+            ("🛠 ابزار", "tools", "امار گپ / کد QR / تگ ادمین / پین / سلف روشن/خاموش / ساخت استیکر"),
             ("🤖 منشی هوشمند", "monshi", "مدیریت منشی و پاسخ‌های خودکار"),
             ("🏷️ تگ همه", "mention", "تگ کردن همه اعضای گروه"),
             ("🔮 فال", "fortune", "فال عمومی / فال حافظ / فال قهوه")
@@ -5149,7 +5312,7 @@ async def inline_panel(update:Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def render_panel_image(username: str, avatar_path: str = None) -> str:
-    """هدر پنل: تصویر اصلی + آواتار کاربر در دایره مرکز + نام پایین تصویر"""
+    """هدر پنل: تصویر اصلی VROOM + آواتار کاربر در دایره مرکز + نام کاربر به‌جای VROOM پایین"""
     try:
         from PIL import Image, ImageDraw, ImageFont, ImageOps
         base_candidates = [
@@ -5160,6 +5323,7 @@ def render_panel_image(username: str, avatar_path: str = None) -> str:
             "/app/panel_header.png",
             os.path.join("media_storage", "panel_header.png"),
             os.path.join("media_storage", "panel_header_base.png"),
+            os.path.join(os.path.dirname(__file__) if '__file__' in dir() else '.', "panel_header.png"),
         ]
         base_path = None
         for p in base_candidates:
@@ -5173,38 +5337,49 @@ def render_panel_image(username: str, avatar_path: str = None) -> str:
         draw = ImageDraw.Draw(img)
         W, H = img.size
         try:
-            font_name = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", max(36, W // 28))
+            font_name = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", max(42, W // 22))
         except Exception:
-            font_name = ImageFont.load_default()
-        safe_name = (username or "User")[:32]
-        for ch in ('_', '*', '`'):
+            try:
+                font_name = ImageFont.truetype("/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf", max(42, W // 22))
+            except Exception:
+                font_name = ImageFont.load_default()
+        safe_name = (username or "User")[:28]
+        for ch in ('_', '*', '`', '[', ']'):
             safe_name = safe_name.replace(ch, ' ')
-        # آواتار در دایره مرکز (حدود 28-32٪ ارتفاع، کمی بالاتر از وسط)
+        # آواتار در دایره مرکزی طرح (دایره پورتال)
         if avatar_path and os.path.exists(avatar_path):
             try:
                 avatar = Image.open(avatar_path).convert('RGBA')
-                size = int(H * 0.30)
+                # اندازه مناسب برای دایره مرکزی تصویر جدید
+                size = int(min(W, H) * 0.22)
                 avatar = ImageOps.fit(avatar, (size, size), centering=(0.5, 0.5))
                 mask = Image.new('L', (size, size), 0)
-                ImageDraw.Draw(mask).ellipse((2, 2, size - 2, size - 2), fill=255)
+                ImageDraw.Draw(mask).ellipse((0, 0, size - 1, size - 1), fill=255)
                 avatar.putalpha(mask)
-                # مرکز تصویر (کمی به بالا برای هم‌خوانی با دایره طرح)
-                pos = ((W - size) // 2, int(H * 0.28))
-                img.paste(avatar, pos, avatar)
+                # موقعیت مرکز دایره در تصویر جدید (تقریباً مرکز افقی، کمی بالاتر از وسط عمودی)
+                pos_x = (W - size) // 2
+                pos_y = int(H * 0.32) - size // 2
+                img.paste(avatar, (pos_x, pos_y), avatar)
             except Exception as e:
                 logger.debug(f"avatar overlay: {e}")
-        # نوار تیره پایین برای نام کاربر
-        bar_h = int(H * 0.12)
-        overlay = Image.new('RGBA', (W, bar_h), (6, 8, 12, 200))
+        # پوشش نوار پایین (جای VROOM) با نام کاربر
+        bar_h = int(H * 0.115)
+        # ناحیه بنر پایین تصویر را کمی تیره می‌کنیم تا متن خوانا باشد
+        overlay = Image.new('RGBA', (W, bar_h), (4, 6, 12, 210))
         img.paste(overlay, (0, H - bar_h), overlay)
-        # نام کاربر وسط پایین
         try:
             bbox = draw.textbbox((0, 0), safe_name, font=font_name)
             tw = bbox[2] - bbox[0]
+            th = bbox[3] - bbox[1]
         except Exception:
-            tw = len(safe_name) * 18
+            tw = len(safe_name) * 22
+            th = 40
         draw = ImageDraw.Draw(img)
-        draw.text(((W - tw) // 2, H - bar_h + (bar_h // 4)), safe_name, font=font_name, fill=(230, 240, 255, 255))
+        text_x = (W - tw) // 2
+        text_y = H - bar_h + (bar_h - th) // 2 - 2
+        # سایه ملایم برای خوانایی
+        draw.text((text_x + 2, text_y + 2), safe_name, font=font_name, fill=(0, 20, 40, 180))
+        draw.text((text_x, text_y), safe_name, font=font_name, fill=(180, 230, 255, 255))
         out = os.path.join(MEDIA_FOLDER, f"panel_{abs(hash(safe_name + str(avatar_path))) % 10**9}.png")
         os.makedirs(MEDIA_FOLDER, exist_ok=True)
         img.convert('RGB').save(out, 'PNG', quality=95)
@@ -5631,8 +5806,9 @@ def get_tools_menu_keyboard(user_id):
             InlineKeyboardButton("🤖 سلف روشن", callback_data=f"exec_self_on_{user_id}", style="success"),
             InlineKeyboardButton("⛔ سلف خاموش", callback_data=f"exec_self_off_{user_id}", style="danger")
         ],
-
-        
+        [
+            InlineKeyboardButton("🎨 ساخت استیکر", callback_data=f"exec_make_sticker_{user_id}", style="success")
+        ],
         [
             InlineKeyboardButton("📖 راهنما", callback_data=f"exec_tools_help_{user_id}", style="primary")
         ],
@@ -6240,7 +6416,7 @@ async def _button_callback_impl(update: Update, context: ContextTypes.DEFAULT_TY
             "protection": ("⚉ حفاظت اسپم\n\n• اسپم روشن\n• اسپم خاموش\n• تنظیم اسپم [تعداد] [زمان]\n• وضعیت اسپم", get_protection_menu_keyboard),
             "ai": ("☥ هوش مصنوعی\n\n• پیوی ۱/۲/۳\n• خاموش پیوی\n• گروه ۱/۲/۳\n• خاموش گروه", get_ai_menu_keyboard),
             "report": ("֎ گزارش\n\n• تنظیم گزارش\n• گروه گزارش", get_report_menu_keyboard),
-            "tools": ("🛠 ابزارها\n\n• امار گپ\n• کد QR\n• تگ ادمین\n• پین\n• سلف روشن/خاموش", get_tools_menu_keyboard),
+            "tools": ("🛠 ابزارها\n\n• امار گپ\n• کد QR\n• تگ ادمین\n• پین\n• سلف روشن/خاموش\n• ساخت استیکر", get_tools_menu_keyboard),
             "monshi": ("🤖 **منشی هوشمند**\n\nمدیریت پاسخ‌های خودکار", get_monshi_menu_keyboard),
             "mention": ("🏷️ **تگ همه**\n\nتگ کردن همه اعضای گروه به صورت ۱۳ نفره", get_mention_menu_keyboard),
             "fortune": ("🔮 **فال و طالع‌بینی**\n\nانتخاب کنید:", get_fortune_menu_keyboard)
@@ -6489,6 +6665,10 @@ async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     
     if cmd == 'sticker_text':
         await msg.edit_text("🎨 لطفاً پیام را به فرمت زیر ارسال کنید:\n\nاستیکر متن [متن]")
+        return
+    
+    if cmd == 'make_sticker':
+        await msg.edit_text("🎨 ساخت استیکر:\n\nروی پیام کاربر ریپلای کنید و بنویسید:\n`ساخت استیکر`\n\nاستیکر نقل‌قول از @QuotLyBot بدون فوروارد و بدون متن ارسال می‌شود و چت با ربات پاک می‌شود.")
         return
     
     if cmd == 'screenshot':
@@ -6941,14 +7121,17 @@ async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 › 📍 تنظیم گزارش — گروه گزارش را تنظیم می‌کند.
 › ℹ️ گروه گزارش — آیدی گروه فعلی را نشان می‌دهد.
 
-› پیام‌های حذف‌شده/ویرایش‌شده و مدیا می‌توانند به گروه گزارش ارسال شوند.""",
+› پس از عضویت، یک گروه خصوصی «گزارش دهی» به‌صورت خودکار ساخته و سنجاق می‌شود.
+› می‌توانید گروه یا کانال دیگری (مثلاً سیو مسیج) را هم با دستور `تنظیم گزارش` جایگزین کنید.
+› پیام‌های حذف‌شده/ویرایش‌شده و مدیا به گروه گزارش ارسال می‌شوند.""",
         'tools_help': """📖 راهنمای ابزار
 
 › 📊 امار گپ — آمار گفتگو با کاربر (ریپلای یا پی‌وی).
 › 🝰 کد QR — ساخت QR از متن/عکس (ریپلای).
 › 👑 تگ ادمین — منشن ادمین‌های گروه.
 › 📌 پین — پین کردن پیام ریپلای‌شده.
-› 🤖 سلف روشن/خاموش — فعال/غیرفعال کردن سلف‌بات.""",
+› 🤖 سلف روشن/خاموش — فعال/غیرفعال کردن سلف‌بات.
+› 🎨 ساخت استیکر — ریپلای روی پیام کاربر + دستور `ساخت استیکر` → استیکر نقل‌قول از @QuotLyBot بدون فوروارد و بدون متن.""",
         'monshi_help': """📖 راهنمای منشی هوشمند
 
 › 🤖 منشی — با دستور `منشی [پاسخ]` فعال می‌شود.
@@ -8322,7 +8505,7 @@ async def global_error_handler(update: object, context: ContextTypes.DEFAULT_TYP
 
 async def main():
     print("=" * 60)
-    print("🤖 Self-Bot System v4.9.4")
+    print("🤖 Self-Bot System v4.9.6")
     print(f"👑 ادمین: {ADMIN_ID}")
     print(f"📁 پوشه سشن‌ها: {SESSIONS_FOLDER}")
     print("=" * 60)
