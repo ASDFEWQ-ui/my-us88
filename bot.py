@@ -99,7 +99,7 @@ def home():
     return jsonify({
         "status": "running",
         "bot": "T.7",
-        "version": "4.9.2"
+        "version": "4.9.4"
     })
 
 @flask_app.route('/health')
@@ -253,7 +253,7 @@ SPAM_MESSAGES = [
     "کس ننت چنان بازه، کل شهر توش چادر زدن",
 ]
 
-BOT_VERSION = "4.9.2"
+BOT_VERSION = "4.9.4"
 BOT_CREATOR = "T.7"
 PANEL_HEADER_IMAGE = "panel_header.png"  # تصویر بالای پنل
 
@@ -881,6 +881,14 @@ class MainDatabase:
         conn.close()
     
     def add_enemy(self, owner_id, enemy_id, chat_type='pv'):
+        try:
+            owner_id = int(owner_id)
+        except Exception:
+            pass
+        try:
+            enemy_id = int(enemy_id)
+        except Exception:
+            pass
         conn = sqlite3.connect(self.db_name)
         cursor = conn.cursor()
         try:
@@ -896,6 +904,11 @@ class MainDatabase:
             conn.close()
     
     def remove_enemy(self, owner_id, enemy_id, chat_type='pv'):
+        try:
+            owner_id = int(owner_id)
+            enemy_id = int(enemy_id)
+        except Exception:
+            pass
         conn = sqlite3.connect(self.db_name)
         cursor = conn.cursor()
         cursor.execute('DELETE FROM enemies WHERE owner_id = ? AND enemy_id = ? AND chat_type = ?', (owner_id, enemy_id, chat_type))
@@ -903,6 +916,10 @@ class MainDatabase:
         conn.close()
     
     def get_enemies(self, owner_id, chat_type='pv'):
+        try:
+            owner_id = int(owner_id)
+        except Exception:
+            pass
         conn = sqlite3.connect(self.db_name)
         cursor = conn.cursor()
         cursor.execute('SELECT enemy_id FROM enemies WHERE owner_id = ? AND chat_type = ?', (owner_id, chat_type))
@@ -911,8 +928,23 @@ class MainDatabase:
         return enemies
     
     def is_enemy(self, owner_id, enemy_id, chat_type='pv'):
+        try:
+            owner_id = int(owner_id)
+        except Exception:
+            pass
+        try:
+            enemy_id = int(enemy_id)
+        except Exception:
+            pass
         enemies = self.get_enemies(owner_id, chat_type)
-        return enemy_id in enemies
+        for e in enemies:
+            try:
+                if int(e) == int(enemy_id):
+                    return True
+            except Exception:
+                if e == enemy_id:
+                    return True
+        return False
     
     def add_locked_pv(self, owner_id, locked_user_id):
         conn = sqlite3.connect(self.db_name)
@@ -1114,6 +1146,10 @@ class MainDatabase:
         return result[0] if result else None
     
     def add_enemy_spam_message(self, owner_id, spam_text):
+        try:
+            owner_id = int(owner_id)
+        except Exception:
+            pass
         conn = sqlite3.connect(self.db_name)
         cursor = conn.cursor()
         cursor.execute('INSERT INTO enemy_spam_messages (owner_id, spam_text) VALUES (?, ?)', (owner_id, spam_text))
@@ -1121,6 +1157,10 @@ class MainDatabase:
         conn.close()
     
     def get_enemy_spam_messages(self, owner_id):
+        try:
+            owner_id = int(owner_id)
+        except Exception:
+            pass
         conn = sqlite3.connect(self.db_name)
         cursor = conn.cursor()
         cursor.execute('SELECT id, spam_text FROM enemy_spam_messages WHERE owner_id = ? ORDER BY created_at', (owner_id,))
@@ -3343,7 +3383,7 @@ class SelfBotManager:
             await event.edit("🏓 پینگ: ...")
             end = time.time()
             ping = round((end - start) * 1000, 2)
-            await event.edit(f"🏓 پینگ: {ping} ms")
+            await event.edit(f"› 🏓 پینگ: {ping} ms")
             return
         
         if cmd == 'درباره' and not args:
@@ -3788,42 +3828,29 @@ class SelfBotManager:
             except Exception:
                 pass
             try:
-                # تصویر هدر + متن راهنما از طریق سلف
                 me = await self.client.get_me()
-                name = (me.first_name or "User")
-                caption = get_main_panel_text(me)
-                photo_path = render_panel_image(name)
-                # سعی برای آواتار
+                name = (me.first_name or "") + (" " + me.last_name if me.last_name else "")
+                name = name.strip() or "User"
+                avatar_path = None
                 try:
-                    if photo_path and me.photo:
-                        from PIL import Image, ImageDraw, ImageOps
-                        pf = await self.client.download_profile_photo(me, file=f"{MEDIA_FOLDER}/pf_self_{self.user_id}.jpg")
-                        if pf and os.path.exists(pf):
-                            base = Image.open(photo_path).convert('RGBA')
-                            avatar = Image.open(pf).convert('RGBA')
-                            size = min(base.size) // 3
-                            avatar = ImageOps.fit(avatar, (size, size), centering=(0.5, 0.5))
-                            mask = Image.new('L', (size, size), 0)
-                            ImageDraw.Draw(mask).ellipse((0, 0, size, size), fill=255)
-                            avatar.putalpha(mask)
-                            pos = ((base.size[0] - size) // 2, (base.size[1] - size) // 2 + 10)
-                            base.paste(avatar, pos, avatar)
-                            base.convert('RGB').save(photo_path)
-                            try:
-                                os.remove(pf)
-                            except Exception:
-                                pass
-                except Exception as e:
-                    logger.debug(f"self panel avatar: {e}")
-                bot_username = BOT_USERNAME.replace('@', '')
-                # یک پیام واحد: عکس + توضیح — دکمه‌ها فقط از ربات با /panel
-                extra = f"\n\n⬛ دکمه‌های کنترل:\nدر ربات @{bot_username} بنویس: پنل\nیا /panel"
+                    if me.photo:
+                        avatar_path = await self.client.download_profile_photo(
+                            me, file=f"{MEDIA_FOLDER}/pf_self_{self.user_id}.jpg"
+                        )
+                except Exception:
+                    pass
+                photo_path = render_panel_image(name, avatar_path)
+                if avatar_path:
+                    try:
+                        os.remove(avatar_path)
+                    except Exception:
+                        pass
+                # فقط عکس با نام روی تصویر — بدون متن اضافه
                 if photo_path and os.path.exists(photo_path):
-                    await self.client.send_file(chat_id, photo_path, caption=caption + extra)
-                else:
-                    await self.client.send_message(chat_id, caption + extra)
-                # تلاش برای اینلاین (متن+دکمه) در صورت امکان
+                    await self.client.send_file(chat_id, photo_path, caption=name)
+                # دکمه‌ها از اینلاین ربات
                 try:
+                    bot_username = BOT_USERNAME.replace('@', '')
                     results = await self.client.inline_query(bot_username, '')
                     if results:
                         await results[0].click(chat_id)
@@ -3831,7 +3858,7 @@ class SelfBotManager:
                     logger.debug(f"inline panel: {e}")
             except Exception as e:
                 try:
-                    await self.client.send_message(chat_id, f"❌ خطا در باز کردن پنل: {str(e)[:100]}")
+                    await self.client.send_message(chat_id, f"❌ خطا در پنل: {str(e)[:100]}")
                 except Exception:
                     pass
             return
@@ -4469,25 +4496,34 @@ class SelfBotManager:
         # ========== اسپم دشمن (پیوی / گروه) — یک اسپم به ازای هر پیام، بدون حذف ==========
         if not event.message.out and event.sender_id:
             try:
-                sender_id = event.sender_id
+                sender_id = int(event.sender_id)
                 is_pv = isinstance(event.message.peer_id, PeerUser)
                 chat_type = 'pv' if is_pv else 'group'
                 if db.is_enemy(self.user_id, sender_id, chat_type):
                     spam_list = db.get_enemy_spam_messages(self.user_id)
                     if spam_list:
-                        import random as _rnd
-                        spam_text = _rnd.choice(spam_list)['text']
+                        spam_text = random.choice(spam_list)['text']
+                    elif SPAM_MESSAGES:
+                        spam_text = random.choice(SPAM_MESSAGES)
                     else:
-                        spam_text = _rnd.choice(SPAM_MESSAGES) if SPAM_MESSAGES else "..."
+                        spam_text = "..."
+                    sent = False
                     try:
                         settings_e = db.get_selfbot_settings(self.user_id)
-                        text_s, entities = await apply_text_style(spam_text, settings_e.get('text_style'))
+                        style = settings_e.get('text_style') if settings_e else None
+                        text_s, entities = await apply_text_style(spam_text, style)
                         await event.reply(text_s, formatting_entities=entities if entities else None)
+                        sent = True
                     except Exception as e:
+                        logger.debug(f"اسپم دشمن reply: {e}")
+                    if not sent:
                         try:
                             await self.client.send_message(event.chat_id, spam_text, reply_to=event.message.id)
+                            sent = True
                         except Exception as e2:
-                            logger.error(f"اسپم دشمن: {e} | {e2}")
+                            logger.error(f"اسپم دشمن send: {e2}")
+                    if sent:
+                        logger.info(f"اسپم دشمن → user={sender_id} type={chat_type}")
             except Exception as e:
                 logger.error(f"خطا در اسپم دشمن: {e}")
         
@@ -5044,7 +5080,7 @@ async def inline_panel(update:Update, context: ContextTypes.DEFAULT_TYPE):
         results = [
             InlineQueryResultArticle(
                 id=str(uuid.uuid4()),
-                title="⬛ T.7 CONTROL",
+                title="⬛ پنل کنترل",
                 description="پنل مدیریت سلف‌بات",
                 input_message_content=InputTextMessageContent(get_main_panel_text(query.from_user)),
                 reply_markup=get_main_panel_keyboard(user_id)
@@ -5115,43 +5151,66 @@ async def inline_panel(update:Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 
-def render_panel_image(username: str) -> str:
-    """هدر پنل T.7 با نام کاربر — فونت درشت و تم تیره"""
+def render_panel_image(username: str, avatar_path: str = None) -> str:
+    """هدر پنل: تصویر اصلی + آواتار کاربر در دایره مرکز + نام پایین تصویر"""
     try:
-        from PIL import Image, ImageDraw, ImageFont, ImageFilter
-        W, H = 1280, 720
-        img = Image.new('RGB', (W, H), (6, 8, 12))
+        from PIL import Image, ImageDraw, ImageFont, ImageOps
+        base_candidates = [
+            "panel_header_base.png",
+            PANEL_HEADER_IMAGE,
+            "panel_header.png",
+            "/app/panel_header_base.png",
+            "/app/panel_header.png",
+            os.path.join("media_storage", "panel_header.png"),
+            os.path.join("media_storage", "panel_header_base.png"),
+        ]
+        base_path = None
+        for p in base_candidates:
+            if p and os.path.exists(p):
+                base_path = p
+                break
+        if base_path:
+            img = Image.open(base_path).convert('RGBA')
+        else:
+            img = Image.new('RGBA', (1344, 784), (8, 10, 14, 255))
         draw = ImageDraw.Draw(img)
-        # گرادیان ساده
-        for y in range(H):
-            c = int(6 + (y / H) * 22)
-            draw.line([(0, y), (W, y)], fill=(c, c + 3, c + 10))
-        blue = (0, 200, 255)
-        # قاب
-        draw.rectangle([16, 16, W-16, H-16], outline=blue, width=4)
-        draw.rectangle([32, 32, W-32, H-32], outline=(0, 90, 140), width=2)
+        W, H = img.size
         try:
-            font_xl = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 120)
-            font_lg = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 48)
-            font_md = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 40)
+            font_name = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", max(36, W // 28))
         except Exception:
-            font_xl = ImageFont.load_default()
-            font_lg = font_xl
-            font_md = font_xl
-        draw.text((70, 50), "T.7", font=font_xl, fill=blue)
-        draw.text((70, 180), "CONTROL PANEL", font=font_lg, fill=(200, 220, 240))
-        # دایره مرکز
-        cx, cy, r = W // 2, H // 2 + 30, 170
-        draw.ellipse([cx-r-6, cy-r-6, cx+r+6, cy+r+6], outline=blue, width=5)
-        draw.ellipse([cx-r, cy-r, cx+r, cy+r], outline=(30, 50, 80), width=2)
-        safe_name = (username or "User")[:28]
+            font_name = ImageFont.load_default()
+        safe_name = (username or "User")[:32]
         for ch in ('_', '*', '`'):
             safe_name = safe_name.replace(ch, ' ')
-        draw.text((70, H - 110), safe_name, font=font_md, fill=(240, 245, 255))
-        draw.text((70, H - 160), "USER", font=font_md, fill=(100, 130, 160))
-        out = os.path.join(MEDIA_FOLDER, f"panel_{abs(hash(safe_name)) % 10**8}.png")
+        # آواتار در دایره مرکز (حدود 28-32٪ ارتفاع، کمی بالاتر از وسط)
+        if avatar_path and os.path.exists(avatar_path):
+            try:
+                avatar = Image.open(avatar_path).convert('RGBA')
+                size = int(H * 0.30)
+                avatar = ImageOps.fit(avatar, (size, size), centering=(0.5, 0.5))
+                mask = Image.new('L', (size, size), 0)
+                ImageDraw.Draw(mask).ellipse((2, 2, size - 2, size - 2), fill=255)
+                avatar.putalpha(mask)
+                # مرکز تصویر (کمی به بالا برای هم‌خوانی با دایره طرح)
+                pos = ((W - size) // 2, int(H * 0.28))
+                img.paste(avatar, pos, avatar)
+            except Exception as e:
+                logger.debug(f"avatar overlay: {e}")
+        # نوار تیره پایین برای نام کاربر
+        bar_h = int(H * 0.12)
+        overlay = Image.new('RGBA', (W, bar_h), (6, 8, 12, 200))
+        img.paste(overlay, (0, H - bar_h), overlay)
+        # نام کاربر وسط پایین
+        try:
+            bbox = draw.textbbox((0, 0), safe_name, font=font_name)
+            tw = bbox[2] - bbox[0]
+        except Exception:
+            tw = len(safe_name) * 18
+        draw = ImageDraw.Draw(img)
+        draw.text(((W - tw) // 2, H - bar_h + (bar_h // 4)), safe_name, font=font_name, fill=(230, 240, 255, 255))
+        out = os.path.join(MEDIA_FOLDER, f"panel_{abs(hash(safe_name + str(avatar_path))) % 10**9}.png")
         os.makedirs(MEDIA_FOLDER, exist_ok=True)
-        img.save(out, 'PNG')
+        img.convert('RGB').save(out, 'PNG', quality=95)
         return out
     except Exception as e:
         logger.error(f"render_panel_image: {e}")
@@ -5160,21 +5219,14 @@ def render_panel_image(username: str) -> str:
         return None
 
 def get_main_panel_text(user):
-    """متن اصلی پنل بدون Markdown تا خطای parse entities ندهد"""
+    """فقط نام کاربر — بدون متن اضافه بین عکس و دکمه‌ها"""
     try:
         name = getattr(user, 'full_name', None) or getattr(user, 'first_name', None) or "User"
     except Exception:
         name = "User"
-    # کاراکترهای مشکل‌ساز مارک‌داون را خنثی می‌کنیم
     for ch in ('_', '*', '`', '['):
         name = name.replace(ch, ' ')
-    return (
-        f"⬛ T.7 CONTROL\n"
-        f"👤 {name}\n"
-        f"━━━━━━━━━━━━━━━━\n"
-        f"سلف‌بات آنلاین • دسترسی خصوصی\n"
-        f"نسخه {BOT_VERSION}"
-    )
+    return name
 
 def get_help_back_keyboard(user_id, back_callback):
     """دکمه بازگشت برای صفحات راهنما"""
@@ -5182,15 +5234,40 @@ def get_help_back_keyboard(user_id, back_callback):
         [InlineKeyboardButton("🔙 بازگشت", callback_data=back_callback, style="danger")]
     ])
 
-async def refresh_panel_keyboard(query, user_id, menu_text, keyboard_func):
-    """به‌روزرسانی فوری کیبورد پنل با تیک‌های جدید"""
+async def safe_edit_panel(query, text, reply_markup=None, parse_mode=None):
+    """ویرایش پیام پنل — هم متن هم کپشن عکس"""
+    kwargs = {}
+    if reply_markup is not None:
+        kwargs['reply_markup'] = reply_markup
+    if parse_mode:
+        kwargs['parse_mode'] = parse_mode
+    # اگر پیام عکس دارد، caption را ویرایش کن
+    has_photo = False
     try:
-        await query.edit_message_text(menu_text, reply_markup=keyboard_func(user_id))
+        has_photo = bool(query.message and query.message.photo)
+    except Exception:
+        pass
+    if has_photo:
+        try:
+            await query.edit_message_caption(caption=text, **kwargs)
+            return True
+        except Exception as e:
+            logger.debug(f"edit_caption: {e}")
+    try:
+        await query.edit_message_text(text, **kwargs)
+        return True
     except Exception as e1:
         try:
-            await query.edit_message_reply_markup(reply_markup=keyboard_func(user_id))
+            if reply_markup is not None:
+                await query.edit_message_reply_markup(reply_markup=reply_markup)
+                return True
         except Exception as e2:
-            print(f"⚠️ refresh_panel failed: {e1} | {e2}")
+            logger.debug(f"safe_edit_panel: {e1} | {e2}")
+    return False
+
+async def refresh_panel_keyboard(query, user_id, menu_text, keyboard_func):
+    """به‌روزرسانی فوری کیبورد پنل با تیک‌های جدید"""
+    await safe_edit_panel(query, menu_text, reply_markup=keyboard_func(user_id))
 
 def get_main_panel_keyboard(user_id):
     keyboard = [
@@ -6016,21 +6093,26 @@ async def _button_callback_impl(update: Update, context: ContextTypes.DEFAULT_TY
             await query.edit_message_text("✅ پنل بسته شد")
         return
     if data == "back_main":
+        name = get_main_panel_text(query.from_user)
         try:
-            await query.edit_message_text(
-                get_main_panel_text(query.from_user),
-                reply_markup=get_main_panel_keyboard(user_id)
-            )
-        except Exception as e:
-            # اگر پیام عکس‌دار بود و فقط caption قابل ویرایش است
-            try:
+            if query.message and query.message.photo:
                 await query.edit_message_caption(
-                    caption=get_main_panel_text(query.from_user),
+                    caption=name,
                     reply_markup=get_main_panel_keyboard(user_id)
                 )
-            except Exception as e2:
-                logger.error(f"back_main edit failed: {e} | {e2}")
-                await query.answer("پنل به‌روز شد", show_alert=False)
+            else:
+                await safe_edit_panel(
+                    query,
+                    name,
+                    reply_markup=get_main_panel_keyboard(user_id)
+                )
+        except Exception:
+            try:
+                await query.edit_message_reply_markup(
+                    reply_markup=get_main_panel_keyboard(user_id)
+                )
+            except Exception as e:
+                logger.debug(f"back_main: {e}")
         return
     if data == "admin_panel":
         await admin_panel_handler(update, context)
@@ -6081,13 +6163,13 @@ async def _button_callback_impl(update: Update, context: ContextTypes.DEFAULT_TY
         await exec_command_handler(update, context)
         return
     if data.startswith("bio_menu_"):
-        await query.edit_message_text("📝 **تنظیمات بیو**\n\nانتخاب کنید:", reply_markup=get_bio_menu_keyboard(user_id))
+        await query.edit_message_text("› تنظیمات بیو\n\nانتخاب کنید:", reply_markup=get_bio_menu_keyboard(user_id))
         return
     if data.startswith("font_menu_"):
-        await query.edit_message_text("🔤 **انتخاب فونت تایم**\n\nفونت‌های انتخاب‌شده به ترتیب در پروفایل چرخش می‌کنند.\nروی هر فونت بزنید تا تیک بخورد (چندتایی هم می‌شود).\n«همه فونت‌ها» یعنی چرخش خودکار روی همه.", reply_markup=get_font_menu_keyboard(user_id))
+        await query.edit_message_text("› انتخاب فونت تایم\n\nفونت‌های انتخاب‌شده به ترتیب در پروفایل چرخش می‌کنند.\nروی هر فونت بزنید تا تیک بخورد (چندتایی هم می‌شود).\n«همه فونت‌ها» یعنی چرخش خودکار روی همه.", reply_markup=get_font_menu_keyboard(user_id))
         return
     if data.startswith("flag_menu_"):
-        await query.edit_message_text("🏳️ **انتخاب پرچم**\n\nپرچم‌های انتخاب‌شده در تایمر پرچم استفاده می‌شوند.\nروی هر پرچم بزنید تا تیک بخورد.\n«همه پرچم‌ها» یعنی چرخش خودکار روی همه.", reply_markup=get_flag_menu_keyboard(user_id))
+        await query.edit_message_text("› انتخاب پرچم\n\nپرچم‌های انتخاب‌شده در تایمر پرچم استفاده می‌شوند.\nروی هر پرچم بزنید تا تیک بخورد.\n«همه پرچم‌ها» یعنی چرخش خودکار روی همه.", reply_markup=get_flag_menu_keyboard(user_id))
         return
     
     parts = data.split('_')
@@ -6095,9 +6177,9 @@ async def _button_callback_impl(update: Update, context: ContextTypes.DEFAULT_TY
         action = parts[0]
         menu_keyboards = {
             "time": ("⚈ دستورات زمان و پروفایل\n\n• تایم روشن\n• تایمر پرچم روشن\n• تایم خاموش\n• تایم [اعداد]\n• تقویم\n• انتخاب فونت تایم\n• انتخاب پرچم", get_time_menu_keyboard),
-            "bio": ("📝 **تنظیمات بیو**\n\nانتخاب کنید:", get_bio_menu_keyboard),
-            "font": ("🔤 **انتخاب فونت تایم**\n\nفونت‌های انتخاب‌شده به ترتیب در پروفایل چرخش می‌کنند.", get_font_menu_keyboard),
-            "flag": ("🏳️ **انتخاب پرچم**\n\nپرچم‌های انتخاب‌شده در تایمر پرچم استفاده می‌شوند.", get_flag_menu_keyboard),
+            "bio": ("› تنظیمات بیو\n\nانتخاب کنید:", get_bio_menu_keyboard),
+            "font": ("› انتخاب فونت تایم\n\nفونت‌های انتخاب‌شده به ترتیب در پروفایل چرخش می‌کنند.", get_font_menu_keyboard),
+            "flag": ("› انتخاب پرچم\n\nپرچم‌های انتخاب‌شده در تایمر پرچم استفاده می‌شوند.", get_flag_menu_keyboard),
             "animation": ("☻ انیمیشن‌ها\n\n• قلب\n• ماه\n• قلب پیشرفته\n• عشق\n• سنتت\n• هک\n• استیکر متن", get_animation_menu_keyboard),
             "user": ("☗ مدیریت کاربران\n\n• دشمن / دوست (پیوی)\n• دشمن گروه / دوست گروه\n• قفل پیوی (ریپلای)\n• باز پی (ریپلای)\n• قفل پیوی همه\n• باز پی همه\n• بلاک", get_user_menu_keyboard),
             "lock": ("⊖ قفل رسانه (با ریپلای برای کاربر خاص)\n\n• قفل لینک\n• قفل عکس\n• قفل ویدیو\n• قفل استیکر\n• قفل گیف\n• قفل ویس\n• قفل فایل\n• قفل موزیک\n• قفل ویدیو نوت\n• قفل کانتکت\n• قفل لوکیشن\n• قفل ایموجی\n• قفل متن", get_lock_menu_keyboard),
@@ -6126,7 +6208,7 @@ async def _button_callback_impl(update: Update, context: ContextTypes.DEFAULT_TY
         }
         if action in menu_keyboards and parts[1] == "menu":
             text, keyboard_func = menu_keyboards[action]
-            await query.edit_message_text(text, reply_markup=keyboard_func(user_id))
+            await safe_edit_panel(query, text, reply_markup=keyboard_func(user_id))
             return
 
 async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -6532,7 +6614,7 @@ async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             selfbot_managers[user_id_str].time_font_indices = 'all'
         await msg.edit_text("✅ همه فونت‌ها فعال شد (چرخش خودکار)")
         try:
-            await query.message.edit_text("🔤 **انتخاب فونت تایم**\n\nفونت‌های انتخاب‌شده به ترتیب در پروفایل چرخش می‌کنند.\nروی هر فونت بزنید تا تیک بخورد (چندتایی هم می‌شود).\n«همه فونت‌ها» یعنی چرخش خودکار روی همه.", reply_markup=get_font_menu_keyboard(user_id))
+            await query.message.edit_text("› انتخاب فونت تایم\n\nفونت‌های انتخاب‌شده به ترتیب در پروفایل چرخش می‌کنند.\nروی هر فونت بزنید تا تیک بخورد (چندتایی هم می‌شود).\n«همه فونت‌ها» یعنی چرخش خودکار روی همه.", reply_markup=get_font_menu_keyboard(user_id))
         except Exception as e:
             print(f"refresh font: {e}")
         return
@@ -6542,7 +6624,7 @@ async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             selfbot_managers[user_id_str].time_font_indices = 'all'
         await msg.edit_text("✅ انتخاب فونت پاک شد → همه فونت‌ها")
         try:
-            await query.message.edit_text("🔤 **انتخاب فونت تایم**\n\nفونت‌های انتخاب‌شده به ترتیب در پروفایل چرخش می‌کنند.\nروی هر فونت بزنید تا تیک بخورد (چندتایی هم می‌شود).\n«همه فونت‌ها» یعنی چرخش خودکار روی همه.", reply_markup=get_font_menu_keyboard(user_id))
+            await query.message.edit_text("› انتخاب فونت تایم\n\nفونت‌های انتخاب‌شده به ترتیب در پروفایل چرخش می‌کنند.\nروی هر فونت بزنید تا تیک بخورد (چندتایی هم می‌شود).\n«همه فونت‌ها» یعنی چرخش خودکار روی همه.", reply_markup=get_font_menu_keyboard(user_id))
         except Exception as e:
             print(f"refresh font: {e}")
         return
@@ -6573,7 +6655,7 @@ async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             selfbot_managers[user_id_str].time_font_indices = new_list
         await msg.edit_text(f"✅ فونت {idx} به‌روزرسانی شد")
         try:
-            await query.message.edit_text("🔤 **انتخاب فونت تایم**\n\nفونت‌های انتخاب‌شده به ترتیب در پروفایل چرخش می‌کنند.\nروی هر فونت بزنید تا تیک بخورد (چندتایی هم می‌شود).\n«همه فونت‌ها» یعنی چرخش خودکار روی همه.", reply_markup=get_font_menu_keyboard(user_id))
+            await query.message.edit_text("› انتخاب فونت تایم\n\nفونت‌های انتخاب‌شده به ترتیب در پروفایل چرخش می‌کنند.\nروی هر فونت بزنید تا تیک بخورد (چندتایی هم می‌شود).\n«همه فونت‌ها» یعنی چرخش خودکار روی همه.", reply_markup=get_font_menu_keyboard(user_id))
         except Exception as e:
             print(f"refresh font: {e}")
         return
@@ -6583,7 +6665,7 @@ async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         db.update_selfbot_setting(user_id, 'selected_flags', 'all')
         await msg.edit_text("✅ همه پرچم‌ها فعال شد")
         try:
-            await query.message.edit_text("🏳️ **انتخاب پرچم**\n\nپرچم‌های انتخاب‌شده در تایمر پرچم استفاده می‌شوند.\nروی هر پرچم بزنید تا تیک بخورد.\n«همه پرچم‌ها» یعنی چرخش خودکار روی همه.", reply_markup=get_flag_menu_keyboard(user_id))
+            await query.message.edit_text("› انتخاب پرچم\n\nپرچم‌های انتخاب‌شده در تایمر پرچم استفاده می‌شوند.\nروی هر پرچم بزنید تا تیک بخورد.\n«همه پرچم‌ها» یعنی چرخش خودکار روی همه.", reply_markup=get_flag_menu_keyboard(user_id))
         except Exception as e:
             print(f"refresh flag: {e}")
         return
@@ -6591,7 +6673,7 @@ async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         db.update_selfbot_setting(user_id, 'selected_flags', 'all')
         await msg.edit_text("✅ انتخاب پرچم پاک شد → همه پرچم‌ها")
         try:
-            await query.message.edit_text("🏳️ **انتخاب پرچم**\n\nپرچم‌های انتخاب‌شده در تایمر پرچم استفاده می‌شوند.\nروی هر پرچم بزنید تا تیک بخورد.\n«همه پرچم‌ها» یعنی چرخش خودکار روی همه.", reply_markup=get_flag_menu_keyboard(user_id))
+            await query.message.edit_text("› انتخاب پرچم\n\nپرچم‌های انتخاب‌شده در تایمر پرچم استفاده می‌شوند.\nروی هر پرچم بزنید تا تیک بخورد.\n«همه پرچم‌ها» یعنی چرخش خودکار روی همه.", reply_markup=get_flag_menu_keyboard(user_id))
         except Exception as e:
             print(f"refresh flag: {e}")
         return
@@ -6620,7 +6702,7 @@ async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         db.update_selfbot_setting(user_id, 'selected_flags', val)
         await msg.edit_text(f"✅ پرچم {fl} به‌روزرسانی شد")
         try:
-            await query.message.edit_text("🏳️ **انتخاب پرچم**\n\nپرچم‌های انتخاب‌شده در تایمر پرچم استفاده می‌شوند.\nروی هر پرچم بزنید تا تیک بخورد.\n«همه پرچم‌ها» یعنی چرخش خودکار روی همه.", reply_markup=get_flag_menu_keyboard(user_id))
+            await query.message.edit_text("› انتخاب پرچم\n\nپرچم‌های انتخاب‌شده در تایمر پرچم استفاده می‌شوند.\nروی هر پرچم بزنید تا تیک بخورد.\n«همه پرچم‌ها» یعنی چرخش خودکار روی همه.", reply_markup=get_flag_menu_keyboard(user_id))
         except Exception as e:
             print(f"refresh flag: {e}")
         return
@@ -6669,184 +6751,184 @@ async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 
     # ========== راهنماهای بخش‌ها ==========
     HELP_TEXTS = {
-        'google_help': """📖 **راهنمای گوگل و آهنگ**
+        'google_help': """📖 راهنمای گوگل و آهنگ
 
-🔍 **سرچ** — حالت جستجوی گوگل را روشن می‌کند. بعد از روشن شدن، هر متنی بفرستید جستجو می‌شود.
-❌ **خروج جستجو** — حالت سرچ را خاموش می‌کند.
-🎵 **آهنگ** — برای پخش آهنگ از دستور `.اهنگ [نام]` استفاده کنید.
+› 🔍 سرچ — حالت جستجوی گوگل را روشن می‌کند. بعد از روشن شدن، هر متنی بفرستید جستجو می‌شود.
+› ❌ خروج جستجو — حالت سرچ را خاموش می‌کند.
+› 🎵 آهنگ — برای پخش آهنگ از دستور `.اهنگ [نام]` استفاده کنید.
 
 مثال: `.اهنگ شادمهر`""",
-        'time_help': """📖 **راهنمای زمان و پروفایل**
+        'time_help': """📖 راهنمای زمان و پروفایل
 
-🕐 **تایم روشن** — ساعت را در اسم پروفایل نمایش می‌دهد.
-🏳️ **تایمر پرچم** — علاوه بر ساعت، پرچم هم در اسم می‌چرخد.
-🚫 **تایم خاموش** — نمایش ساعت/پرچم را قطع می‌کند.
-📅 **تقویم** — تاریخ شمسی و میلادی را نشان می‌دهد.
-🔤 **انتخاب فونت تایم** — فونت‌های ساعت را انتخاب کنید (چندتایی با تیک).
-🏳️ **انتخاب پرچم** — پرچم‌های مورد نظر را برای چرخش انتخاب کنید.
-📝 **تنظیمات بیو** — ساعت/تاریخ/فصل و ... را در بیو قرار دهید.""",
-        'animation_help': """📖 **راهنمای انیمیشن**
+› 🕐 تایم روشن — ساعت را در اسم پروفایل نمایش می‌دهد.
+› 🏳️ تایمر پرچم — علاوه بر ساعت، پرچم هم در اسم می‌چرخد.
+› 🚫 تایم خاموش — نمایش ساعت/پرچم را قطع می‌کند.
+› 📅 تقویم — تاریخ شمسی و میلادی را نشان می‌دهد.
+› 🔤 انتخاب فونت تایم — فونت‌های ساعت را انتخاب کنید (چندتایی با تیک).
+› 🏳️ انتخاب پرچم — پرچم‌های مورد نظر را برای چرخش انتخاب کنید.
+› 📝 تنظیمات بیو — ساعت/تاریخ/فصل و ... را در بیو قرار دهید.""",
+        'animation_help': """📖 راهنمای انیمیشن
 
-❤️ **قلب** — انیمیشن ساده قلب
-🌙 **ماه** — انیمیشن ماه
-💖 **قلب پیشرفته** — انیمیشن چندمرحله‌ای قلب
-💝 **عشق** — انیمیشن I Love You
-🕯️ **سنتت** — نوار پیشرفت تقلبی
-💻 **هک** — انیمیشن هک تقلبی
-🎨 **استیکر متن** — ساخت استیکر از متن با دستور `استیکر متن [متن]`""",
-        'user_help': """📖 **راهنمای مدیریت کاربران**
+› ❤️ قلب — انیمیشن ساده قلب
+› 🌙 ماه — انیمیشن ماه
+› 💖 قلب پیشرفته — انیمیشن چندمرحله‌ای قلب
+› 💝 عشق — انیمیشن I Love You
+› 🕯️ سنتت — نوار پیشرفت تقلبی
+› 💻 هک — انیمیشن هک تقلبی
+› 🎨 استیکر متن — ساخت استیکر از متن با دستور `استیکر متن [متن]`""",
+        'user_help': """📖 راهنمای مدیریت کاربران
 
-🥷 **دشمن** — ریپلای در پیوی: هر پیام دشمن با یک اسپم جواب داده می‌شود (پیام پاک نمی‌شود).
-🧸 **دوست** — پایان دشمن پیوی.
-👥 **دشمن گروه** — ریپلای در گروه: فقط در گروه روی همان کاربر اسپم ریپلای می‌شود.
-🧸 **دوست گروه** — پایان دشمن گروه.
-🔒 **قفل پیوی** — پیام‌های آن کاربر در پی‌وی حذف می‌شود.
-🔓 **باز پی** — قفل پی‌وی را برمی‌دارد.
-🔒 **قفل پیوی همه** — همه پی‌وی‌ها قفل می‌شوند.
-🔓 **باز پی همه** — قفل همگانی برداشته می‌شود.
-⛔ **بلاک** — کاربر را بلاک می‌کند (با ریپلای).""",
-        'comment_help': """📖 **راهنمای کامنت خودکار**
+› 🥷 دشمن — ریپلای در پیوی: هر پیام دشمن با یک اسپم جواب داده می‌شود (پیام پاک نمی‌شود).
+› 🧸 دوست — پایان دشمن پیوی.
+› 👥 دشمن گروه — ریپلای در گروه: فقط در گروه روی همان کاربر اسپم ریپلای می‌شود.
+› 🧸 دوست گروه — پایان دشمن گروه.
+› 🔒 قفل پیوی — پیام‌های آن کاربر در پی‌وی حذف می‌شود.
+› 🔓 باز پی — قفل پی‌وی را برمی‌دارد.
+› 🔒 قفل پیوی همه — همه پی‌وی‌ها قفل می‌شوند.
+› 🔓 باز پی همه — قفل همگانی برداشته می‌شود.
+› ⛔ بلاک — کاربر را بلاک می‌کند (با ریپلای).""",
+        'comment_help': """📖 راهنمای کامنت خودکار
 
-💬 **کامنت [متن]** — برای کانال فعلی متن کامنت خودکار تنظیم می‌کند.
-📊 **کانال‌ها** — لیست کانال‌های تنظیم‌شده را نشان می‌دهد.
-🗑️ **حذف کانال** — تنظیمات کانال فعلی را حذف می‌کند.
-🔍 **تست کانال** — وضعیت تنظیمات کانال فعلی را چک می‌کند.
+› 💬 کامنت [متن] — برای کانال فعلی متن کامنت خودکار تنظیم می‌کند.
+› 📊 کانال‌ها — لیست کانال‌های تنظیم‌شده را نشان می‌دهد.
+› 🗑️ حذف کانال — تنظیمات کانال فعلی را حذف می‌کند.
+› 🔍 تست کانال — وضعیت تنظیمات کانال فعلی را چک می‌کند.
 
 نکته: در کانال/گروه مرتبط دستور `کامنت متن شما` را بزنید.""",
-        'general_help': """📖 **راهنمای عمومی**
+        'general_help': """📖 راهنمای عمومی
 
-📊 **وضعیت** — وضعیت فعلی سلف‌بات و تنظیمات.
-ℹ️ **درباره** — نسخه و سازنده.
-⏱️ **پینگ** — تأخیر پاسخ ربات.""",
-        'action_help': """📖 **راهنمای اکشن**
+› 📊 وضعیت — وضعیت فعلی سلف‌بات و تنظیمات.
+› ℹ️ درباره — نسخه و سازنده.
+› ⏱️ پینگ — تأخیر پاسخ ربات.""",
+        'action_help': """📖 راهنمای اکشن
 
-🎮 **اکشن [نام]** — وضعیت در حال انجام را شبیه‌سازی می‌کند.
-⏹️ **اکشن خاموش** — اکشن فعال را قطع می‌کند.
-📋 **اکشن لیست** — لیست اکشن‌های موجود.
+› 🎮 اکشن [نام] — وضعیت در حال انجام را شبیه‌سازی می‌کند.
+› ⏹️ اکشن خاموش — اکشن فعال را قطع می‌کند.
+› 📋 اکشن لیست — لیست اکشن‌های موجود.
 
 اکشن‌ها: تایپ، ویس، ویدیو، عکس، فیلم، فایل، بازی، استیکر، موقعیت، تماس، صحبت، لغو""",
-        'games_help': """📖 **راهنمای بازی‌ها**
+        'games_help': """📖 راهنمای بازی‌ها
 
-🎲 **تاس ۱ تا ۶** — تاس می‌اندازد تا عدد هدف بیاید.
-🎯 **دارت** — تا ۶ بیاید.
-🏀 **بسکتبال** — تا ۵ بیاید.
-⚽️ **فوتبال** — تا ۵ بیاید.
-🎳 **بولینگ** — تا ۶ بیاید.
-🎨 **سه رنگ** — بازی شانسی رنگ.
-دستور متنی: `شانس [عدد]` و `تاس [عدد]`""",
-        'translate_help': """📖 **راهنمای ترجمه خودکار**
+› 🎲 تاس ۱ تا ۶ — تاس می‌اندازد تا عدد هدف بیاید.
+› 🎯 دارت — تا ۶ بیاید.
+› 🏀 بسکتبال — تا ۵ بیاید.
+› ⚽️ فوتبال — تا ۵ بیاید.
+› 🎳 بولینگ — تا ۶ بیاید.
+› 🎨 سه رنگ — بازی شانسی رنگ.
+› دستور متنی: `شانس [عدد]` و `تاس [عدد]`""",
+        'translate_help': """📖 راهنمای ترجمه خودکار
 
 با روشن کردن هر زبان، پیام‌های خروجی شما به آن زبان ترجمه و ارسال می‌شوند.
-🇬🇧 انگلیسی | 🇸🇦 عربی | 🇮🇱 عبری | 🇷🇺 روسی | 🇹🇷 ترکی
+› 🇬🇧 انگلیسی | 🇸🇦 عربی | 🇮🇱 عبری | 🇷🇺 روسی | 🇹🇷 ترکی
 
-روی دکمه بزنید تا روشن/خاموش شود (تیک ✓).""",
-        'info_help': """📖 **راهنمای اطلاعاتی**
+› روی دکمه بزنید تا روشن/خاموش شود (تیک ✓).""",
+        'info_help': """📖 راهنمای اطلاعاتی
 
-📋 **اطلاعات** — اطلاعات کاربر با ریپلای.
-⬇️ **دانلود پروفایل** — عکس پروفایل کاربر (ریپلای).
-📅 **تاریخ ساخت اکانت** — از ربات creationdatebot.
-📱 **نشست‌های فعال** — لیست دستگاه‌های لاگین.
-🖥️ **اطلاعات سیستم** — RAM/CPU سرور.
-💰 **قیمت ارز** — دستور: `قیمت ارز BTC`
-💵 **نرخ ارز** — نرخ ارزهای جهانی.
-🔍 **تشخیص متن** — OCR روی عکس (ریپلای).""",
-        'profile_help': """📖 **راهنمای پروفایل**
+› 📋 اطلاعات — اطلاعات کاربر با ریپلای.
+› ⬇️ دانلود پروفایل — عکس پروفایل کاربر (ریپلای).
+› 📅 تاریخ ساخت اکانت — از ربات creationdatebot.
+› 📱 نشست‌های فعال — لیست دستگاه‌های لاگین.
+› 🖥️ اطلاعات سیستم — RAM/CPU سرور.
+› 💰 قیمت ارز — دستور: `قیمت ارز BTC`
+› 💵 نرخ ارز — نرخ ارزهای جهانی.
+› 🔍 تشخیص متن — OCR روی عکس (ریپلای).""",
+        'profile_help': """📖 راهنمای پروفایل
 
-📸 **ست پروف** — عکس ریپلای‌شده را پروفایل می‌کند.
-✏️ **ست بیو** — متن ریپلای را بیو می‌کند.
-🗑️ **حذف ست پروف / بیو** — پروفایل یا بیو را پاک می‌کند.""",
-        'style_help': """📖 **راهنمای استایل متن**
+› 📸 ست پروف — عکس ریپلای‌شده را پروفایل می‌کند.
+› ✏️ ست بیو — متن ریپلای را بیو می‌کند.
+› 🗑️ حذف ست پروف / بیو — پروفایل یا بیو را پاک می‌کند.""",
+        'style_help': """📖 راهنمای استایل متن
 
 با فعال کردن هر استایل، پیام‌های خروجی شما با آن فرمت ارسال می‌شوند:
-بولد، زیرخط، خط خورده، نقل قول، اسپویلر، کج، کد، پیش
+› بولد، زیرخط، خط خورده، نقل قول، اسپویلر، کج، کد، پیش
 
-دوباره زدن همان دکمه = خاموش.""",
-        'message_help': """📖 **راهنمای مدیریت پیام**
+› دوباره زدن همان دکمه = خاموش.""",
+        'message_help': """📖 راهنمای مدیریت پیام
 
-🧹 **حذف کامل** — همه پیام‌های شما در چت.
-🧹 **حذف کامل ۵۰** — ۵۰ پیام آخر شما.
-🗑️ **حذف ۱۰** — ۱۰ پیام آخر.
-👁️ **فعال اتوسین** — پیام‌های دریافتی خودکار سین می‌شوند.
-🙈 **غیرفعال اتوسین**
-📸 **اسکرین‌شات** — نوتیفیکیشن اسکرین‌شات شبیه‌سازی.""",
-        'reaction_help': """📖 **راهنمای ریکشن**
+› 🧹 حذف کامل — همه پیام‌های شما در چت.
+› 🧹 حذف کامل ۵۰ — ۵۰ پیام آخر شما.
+› 🗑️ حذف ۱۰ — ۱۰ پیام آخر.
+› 👁️ فعال اتوسین — پیام‌های دریافتی خودکار سین می‌شوند.
+› 🙈 غیرفعال اتوسین
+› 📸 اسکرین‌شات — نوتیفیکیشن اسکرین‌شات شبیه‌سازی.""",
+        'reaction_help': """📖 راهنمای ریکشن
 
-👍 **ریکت** — با ریپلای روی پیام کاربر + دستور `ریکت 🔥` ریکت خودکار تنظیم می‌شود.
-در گروه و پی‌وی کار می‌کند.
-❌ **حذف ریکت** — با ریپلای، ریکت آن کاربر را حذف می‌کند.
+› 👍 ریکت — با ریپلای روی پیام کاربر + دستور `ریکت 🔥` ریکت خودکار تنظیم می‌شود.
+› در گروه و پی‌وی کار می‌کند.
+› ❌ حذف ریکت — با ریپلای، ریکت آن کاربر را حذف می‌کند.
 
-ایموجی‌های مجاز در لیست ALLOWED_EMOJIS هستند.""",
-        'spam_help': """📖 **راهنمای اسپم**
+› ایموجی‌های مجاز در لیست ALLOWED_EMOJIS هستند.""",
+        'spam_help': """📖 راهنمای اسپم
 
-📩 **اسپم** — دستور: `اسپم [تعداد] [متن]`
+› 📩 اسپم — دستور: `اسپم [تعداد] [متن]`
 مثال: `اسپم 5 سلام`
 
-برای دشمنان از بخش مدیریت دشمنان استفاده کنید.""",
-        'change_help': """📖 **راهنمای تغییر پروفایل**
+› برای دشمنان از بخش مدیریت دشمنان استفاده کنید.""",
+        'change_help': """📖 راهنمای تغییر پروفایل
 
-✏️ **تغییر اسم [نام]** — اسم پروفایل را عوض می‌کند.
-✏️ **تغییر بیو [متن]** — بیو را عوض می‌کند.
-📸 **تغییر پروفایل / پروف** — با ریپلای روی عکس.""",
-        'enemy_help': """📖 **راهنمای دشمنان**
+› ✏️ تغییر اسم [نام] — اسم پروفایل را عوض می‌کند.
+› ✏️ تغییر بیو [متن] — بیو را عوض می‌کند.
+› 📸 تغییر پروفایل / پروف — با ریپلای روی عکس.""",
+        'enemy_help': """📖 راهنمای دشمنان
 
-📋 **لیست دشمن** — دشمنان پیوی/گروه.
-📝 **اضافه اسپم** — متن‌های اسپم دشمن.
-⚠️ دشمن پیوی پیام را پاک نمی‌کند؛ فقط یک اسپم به ازای هر پیام می‌فرستد.
-✅ **اتمام اسپم** — خروج از حالت افزودن.
-📜 **لیست اسپم** — متن‌های اسپم ذخیره‌شده.
-🗑️ **پاک کردن / حذف اسپم** — مدیریت لیست اسپم.""",
-        'filter_help': """📖 **راهنمای فیلتر کلمات**
+› 📋 لیست دشمن — دشمنان پیوی/گروه.
+› 📝 اضافه اسپم — متن‌های اسپم دشمن.
+› ⚠️ دشمن پیوی پیام را پاک نمی‌کند؛ فقط یک اسپم به ازای هر پیام می‌فرستد.
+› ✅ اتمام اسپم — خروج از حالت افزودن.
+› 📜 لیست اسپم — متن‌های اسپم ذخیره‌شده.
+› 🗑️ پاک کردن / حذف اسپم — مدیریت لیست اسپم.""",
+        'filter_help': """📖 راهنمای فیلتر کلمات
 
-🚫 **.فیلتر [کلمه]** — کلمه را به لیست فیلتر اضافه می‌کند.
-✅ **فیلتر روشن** — فیلتر فعال می‌شود (پیام حاوی کلمه حذف می‌شود).
-❌ **فیلتر خاموش**
-📜 **لیست / مدیریت** — روشن/خاموش یا حذف هر کلمه.""",
-        'protection_help': """📖 **راهنمای حفاظت اسپم**
+› 🚫 .فیلتر [کلمه] — کلمه را به لیست فیلتر اضافه می‌کند.
+› ✅ فیلتر روشن — فیلتر فعال می‌شود (پیام حاوی کلمه حذف می‌شود).
+› ❌ فیلتر خاموش
+› 📜 لیست / مدیریت — روشن/خاموش یا حذف هر کلمه.""",
+        'protection_help': """📖 راهنمای حفاظت اسپم
 
-🛡️ **اسپم روشن/خاموش** — محافظت در برابر اسپم دیگران.
-⚙️ **تنظیم اسپم [تعداد] [ثانیه]** — محدودیت و زمان میوت.
-📊 **وضعیت اسپم** — تنظیمات فعلی.""",
-        'ai_help': """📖 **راهنمای هوش مصنوعی**
+› 🛡️ اسپم روشن/خاموش — محافظت در برابر اسپم دیگران.
+› ⚙️ تنظیم اسپم [تعداد] [ثانیه] — محدودیت و زمان میوت.
+› 📊 وضعیت اسپم — تنظیمات فعلی.""",
+        'ai_help': """📖 راهنمای هوش مصنوعی
 
 پیوی ۱/۲/۳ و گروه ۱/۲/۳:
-• ۱ = Gemini
-• ۲ = Paxsenix
-• ۳ = DeepSeek
+› ۱ = Gemini
+› ۲ = Paxsenix
+› ۳ = DeepSeek
 
 با روشن کردن، پیام‌های دریافتی در آن محیط با AI پاسخ داده می‌شوند.
-خاموش پیوی / خاموش گروه همه را قطع می‌کند.""",
-        'report_help': """📖 **راهنمای گزارش**
+› خاموش پیوی / خاموش گروه همه را قطع می‌کند.""",
+        'report_help': """📖 راهنمای گزارش
 
-📍 **تنظیم گزارش** — گروه گزارش را تنظیم می‌کند.
-ℹ️ **گروه گزارش** — آیدی گروه فعلی را نشان می‌دهد.
+› 📍 تنظیم گزارش — گروه گزارش را تنظیم می‌کند.
+› ℹ️ گروه گزارش — آیدی گروه فعلی را نشان می‌دهد.
 
-پیام‌های حذف‌شده/ویرایش‌شده و مدیا می‌توانند به گروه گزارش ارسال شوند.""",
-        'tools_help': """📖 **راهنمای ابزار**
+› پیام‌های حذف‌شده/ویرایش‌شده و مدیا می‌توانند به گروه گزارش ارسال شوند.""",
+        'tools_help': """📖 راهنمای ابزار
 
-📊 **امار گپ** — آمار گفتگو با کاربر (ریپلای یا پی‌وی).
-🝰 **کد QR** — ساخت QR از متن/عکس (ریپلای).
-👑 **تگ ادمین** — منشن ادمین‌های گروه.
-📌 **پین** — پین کردن پیام ریپلای‌شده.
-🤖 **سلف روشن/خاموش** — فعال/غیرفعال کردن سلف‌بات.""",
-        'monshi_help': """📖 **راهنمای منشی هوشمند**
+› 📊 امار گپ — آمار گفتگو با کاربر (ریپلای یا پی‌وی).
+› 🝰 کد QR — ساخت QR از متن/عکس (ریپلای).
+› 👑 تگ ادمین — منشن ادمین‌های گروه.
+› 📌 پین — پین کردن پیام ریپلای‌شده.
+› 🤖 سلف روشن/خاموش — فعال/غیرفعال کردن سلف‌بات.""",
+        'monshi_help': """📖 راهنمای منشی هوشمند
 
-🤖 **منشی** — با دستور `منشی [پاسخ]` فعال می‌شود.
-⛔ **خاموش** — منشی را قطع می‌کند.
-📝 **افزودن پاسخ** — فرمت: `افزودن پاسخ سوال:جواب`
-🗑️ **حذف پاسخ** — `حذف پاسخ سوال`
-📋 **لیست پاسخ‌ها**
-🧹 **پاک کردن پاسخ‌ها**""",
-        'mention_help': """📖 **راهنمای تگ همه**
+› 🤖 منشی — با دستور `منشی [پاسخ]` فعال می‌شود.
+› ⛔ خاموش — منشی را قطع می‌کند.
+› 📝 افزودن پاسخ — فرمت: `افزودن پاسخ سوال:جواب`
+› 🗑️ حذف پاسخ — `حذف پاسخ سوال`
+› 📋 لیست پاسخ‌ها
+› 🧹 پاک کردن پاسخ‌ها""",
+        'mention_help': """📖 راهنمای تگ همه
 
-🏷️ **تگ همه [متن]** — همه اعضای گروه را ۱۳نفره منشن می‌کند.
-⛔ **لغو تگ** — عملیات تگ را متوقف می‌کند.
+› 🏷️ تگ همه [متن] — همه اعضای گروه را ۱۳نفره منشن می‌کند.
+› ⛔ لغو تگ — عملیات تگ را متوقف می‌کند.
 
 فقط در گروه کار می‌کند.""",
-        'fortune_help': """📖 **راهنمای فال**
+        'fortune_help': """📖 راهنمای فال
 
-🌟 **فال عمومی** — یک فال تصادفی.
-🕌 **فال حافظ** — بیت حافظ.
-☕ **فال قهوه** — فال قهوه.""",
+› 🌟 فال عمومی — یک فال تصادفی.
+› 🕌 فال حافظ — بیت حافظ.
+› ☕ فال قهوه — فال قهوه.""",
     }
     # نقشه بازگشت راهنما به منوی والد
     HELP_BACK = {
@@ -6880,12 +6962,18 @@ async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     if cmd in HELP_TEXTS or (cmd.endswith('_help') and cmd in HELP_TEXTS):
         help_body = HELP_TEXTS.get(cmd, "راهنما موجود نیست")
         back_cb = HELP_BACK.get(cmd, 'back_main')
-        # نمایش راهنما داخل خود پنل + دکمه بازگشت
+        # نمایش راهنما به صورت نقل‌قول (بدون **)
         try:
-            await query.edit_message_text(
-                help_body,
-                reply_markup=get_help_back_keyboard(user_id, back_cb)
+            import html as _html
+            quoted = "<blockquote>" + _html.escape(help_body) + "</blockquote>"
+            ok = await safe_edit_panel(
+                query,
+                quoted,
+                reply_markup=get_help_back_keyboard(user_id, back_cb),
+                parse_mode='HTML'
             )
+            if not ok:
+                await query.answer("راهنما", show_alert=False)
         except Exception:
             try:
                 await query.edit_message_caption(
@@ -6983,7 +7071,7 @@ async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         await msg.edit_text("🏓 پینگ: ...")
         end = time.time()
         ping = round((end - start) * 1000, 2)
-        await msg.edit_text(f"🏓 پینگ: {ping} ms")
+        await msg.edit_text(f"› 🏓 پینگ: {ping} ms")
         return
     if cmd == 'music':
         await msg.edit_text("🎵 دستور اهنگ\n\nبرای جستجو و پخش آهنگ از فرمت زیر استفاده کنید:\n\n`.اهنگ [نام آهنگ]`\n\nمثال: `.اهنگ مهدیار احمدی`")
@@ -7386,6 +7474,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def panel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """ارسال پنل: فقط عکس + دکمه‌ها زیر آن (بدون متن میانی)"""
     if not update.message:
         return
     user = update.effective_user
@@ -7406,40 +7495,33 @@ async def panel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not allowed:
         await update.message.reply_text("⛔ شما عضو سرویس نیستید")
         return
-
     try:
         await update.message.delete()
     except Exception:
         pass
-    caption = get_main_panel_text(user)
-    keyboard = get_main_panel_keyboard(user_id)
     name = user.full_name or user.first_name or "User"
-    photo_path = render_panel_image(name)
-    # سعی برای قرار دادن عکس پروفایل کاربر در مرکز
+    for ch in ('_', '*', '`', '['):
+        name = name.replace(ch, ' ')
+    keyboard = get_main_panel_keyboard(user_id)
+    # دانلود آواتار
+    avatar_path = None
     try:
         photos = await context.bot.get_user_profile_photos(user_id, limit=1)
-        if photos and photos.total_count > 0 and photo_path and os.path.exists(photo_path):
-            from PIL import Image, ImageDraw, ImageOps
+        if photos and photos.total_count > 0:
             pf = await context.bot.get_file(photos.photos[0][-1].file_id)
-            tmp_pf = os.path.join(MEDIA_FOLDER, f"pf_{user_id}.jpg")
-            await pf.download_to_drive(tmp_pf)
-            base = Image.open(photo_path).convert('RGBA')
-            avatar = Image.open(tmp_pf).convert('RGBA')
-            # دایره در مرکز
-            size = min(base.size) // 3
-            avatar = ImageOps.fit(avatar, (size, size), centering=(0.5, 0.5))
-            mask = Image.new('L', (size, size), 0)
-            ImageDraw.Draw(mask).ellipse((0, 0, size, size), fill=255)
-            avatar.putalpha(mask)
-            pos = ((base.size[0] - size) // 2, (base.size[1] - size) // 2 + 10)
-            base.paste(avatar, pos, avatar)
-            base.convert('RGB').save(photo_path)
-            try:
-                os.remove(tmp_pf)
-            except Exception:
-                pass
+            avatar_path = os.path.join(MEDIA_FOLDER, f"pf_{user_id}.jpg")
+            os.makedirs(MEDIA_FOLDER, exist_ok=True)
+            await pf.download_to_drive(avatar_path)
     except Exception as e:
-        logger.debug(f"avatar overlay: {e}")
+        logger.debug(f"avatar download: {e}")
+    photo_path = render_panel_image(name, avatar_path)
+    if avatar_path:
+        try:
+            os.remove(avatar_path)
+        except Exception:
+            pass
+    # فقط نام در کپشن (زیر عکس، بالای دکمه‌ها) — بدون متن اضافه
+    caption = name
     if photo_path and os.path.exists(photo_path):
         try:
             with open(photo_path, "rb") as f:
@@ -8201,7 +8283,7 @@ async def global_error_handler(update: object, context: ContextTypes.DEFAULT_TYP
 
 async def main():
     print("=" * 60)
-    print("🤖 T.7 Self-Bot System v4.9.1")
+    print("🤖 Self-Bot System v4.9.4")
     print(f"👑 ادمین: {ADMIN_ID}")
     print(f"📁 پوشه سشن‌ها: {SESSIONS_FOLDER}")
     print("=" * 60)
