@@ -1,4 +1,3 @@
-
 import os
 import sys
 import sqlite3
@@ -213,6 +212,7 @@ def full_chat_id_to_short(full_id):
         return abs_id - 10**12
     return abs_id
 
+# ==================== افزودن فونت‌های جدید ====================
 classic_fonts = [
     "⊘𝟷ϩӠ4ƼϬ7𝟾९",
     "𝟘𝟙𝟚𝟛𝟜𝟝𝟞𝟟𝟠𝟡",
@@ -224,6 +224,12 @@ classic_fonts = [
     "𝟶𝟷𝟸𝟹𝟺𝟻𝟼𝟽𝟾𝟿",
     "₀¹²³⁴⁵⁶₇₈₉",
     "𝟎𝟏𝟐𝟑𝟒𝟓𝟔𝟕۸𝟗",
+    # فونت‌های جدید
+    "𐒠𐒡𐒢𐒣𐒤𐒥𐒦𐒧𐒨𐒩",
+    "🄀🄁🄂🄃🄄🄅🄆🄇🄈🄉",
+    "₀₁₂₃₄₅₆₇₈₉",
+    "𝟘𝟙𝟚𝟛𝟜𝟝𝟞𝟟𝟠𝟡",
+    "⓪①②③④⑤⑥⑦⑧⑨",
 ]
 
 flags = [
@@ -1420,6 +1426,53 @@ class MainDatabase:
         conn.close()
         return {q: a for q, a in results}
 
+# ========== توابع کمکی برای ذخیره انتخاب فونت و پرچم ==========
+def get_selected_font(user_id):
+    try:
+        conn = sqlite3.connect('main_database.db')
+        cursor = conn.cursor()
+        cursor.execute('SELECT value FROM user_info WHERE user_id = ? AND key = "selected_font" ORDER BY timestamp DESC LIMIT 1', (user_id,))
+        result = cursor.fetchone()
+        conn.close()
+        if result:
+            return int(result[0])
+        return None
+    except:
+        return None
+
+def set_selected_font(user_id, font_index):
+    try:
+        conn = sqlite3.connect('main_database.db')
+        cursor = conn.cursor()
+        cursor.execute('INSERT INTO user_info (user_id, key, value) VALUES (?, "selected_font", ?)', (user_id, str(font_index)))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"خطا در ذخیره فونت انتخاب شده: {e}")
+
+def get_selected_flag(user_id):
+    try:
+        conn = sqlite3.connect('main_database.db')
+        cursor = conn.cursor()
+        cursor.execute('SELECT value FROM user_info WHERE user_id = ? AND key = "selected_flag" ORDER BY timestamp DESC LIMIT 1', (user_id,))
+        result = cursor.fetchone()
+        conn.close()
+        if result:
+            return int(result[0])
+        return None
+    except:
+        return None
+
+def set_selected_flag(user_id, flag_index):
+    try:
+        conn = sqlite3.connect('main_database.db')
+        cursor = conn.cursor()
+        cursor.execute('INSERT INTO user_info (user_id, key, value) VALUES (?, "selected_flag", ?)', (user_id, str(flag_index)))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"خطا در ذخیره پرچم انتخاب شده: {e}")
+
 db = MainDatabase()
 selfbot_managers = {}
 
@@ -1761,6 +1814,9 @@ class SelfBotManager:
         self.auto_comment_sent = set()
         self.STATE_FILE = f'state_{user_id}.json'
         self.load_state()
+        # متغیرهای جدید برای انتخاب فونت و پرچم
+        self.selected_font = get_selected_font(self.user_id)  # None یعنی استفاده از چرخه دقیقه‌ای
+        self.selected_flag = get_selected_flag(self.user_id)
     
     def load_state(self):
         try:
@@ -4081,26 +4137,36 @@ class SelfBotManager:
         if settings.get('time_enabled'):
             now = get_now()
             current_minute = now.minute
-            if self.time_font_indices == 'all':
-                font_index = current_minute % len(classic_fonts)
-            elif isinstance(self.time_font_indices, list) and self.time_font_indices:
-                if hasattr(self, 'time_font_cycle'):
-                    self.time_font_cycle = (self.time_font_cycle + 1) % len(self.time_font_indices)
-                else:
-                    self.time_font_cycle = 0
-                font_index = self.time_font_indices[self.time_font_cycle]
-                if font_index >= len(classic_fonts):
-                    font_index = 0
+            
+            # استفاده از فونت انتخابی کاربر در صورت وجود
+            if self.selected_font is not None:
+                font_index = self.selected_font
             else:
-                font_index = 0
+                if self.time_font_indices == 'all':
+                    font_index = current_minute % len(classic_fonts)
+                elif isinstance(self.time_font_indices, list) and self.time_font_indices:
+                    if hasattr(self, 'time_font_cycle'):
+                        self.time_font_cycle = (self.time_font_cycle + 1) % len(self.time_font_indices)
+                    else:
+                        self.time_font_cycle = 0
+                    font_index = self.time_font_indices[self.time_font_cycle]
+                    if font_index >= len(classic_fonts):
+                        font_index = 0
+                else:
+                    font_index = 0
             time_now = now.strftime("%H:%M")
             time_now_classic = convert_to_classic_font(time_now, font_index)
             try:
                 current_name = db.get_current_name(self.user_id)
                 if not current_name:
                     current_name = self.BASE_NAME
+                
+                # استفاده از پرچم انتخابی کاربر در صورت وجود
                 if settings.get('flag_enabled'):
-                    flag_index = current_minute % len(flags)
+                    if self.selected_flag is not None:
+                        flag_index = self.selected_flag
+                    else:
+                        flag_index = current_minute % len(flags)
                     flag = flags[flag_index]
                     new_name = f"『 {flag} 』{current_name} {time_now_classic}"
                 else:
@@ -4832,6 +4898,8 @@ class SelfBotManager:
         except:
             return f"چت {chat_id}"
 
+# ==================== توابع پنل ====================
+
 async def inline_panel(update:Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.inline_query
     if not query:
@@ -4877,6 +4945,7 @@ async def inline_panel(update:Update, context: ContextTypes.DEFAULT_TYPE):
                         [InlineKeyboardButton("📋 درخواست‌ها", callback_data=f"admin_requests"), InlineKeyboardButton("🔐 منتظر ورود", callback_data=f"admin_login")],
                         [InlineKeyboardButton("✅ کاربران فعال", callback_data=f"admin_active"), InlineKeyboardButton("🤖 سلف‌بات‌ها", callback_data=f"admin_selfbots")],
                         [InlineKeyboardButton("📊 آمار کلی", callback_data=f"admin_stats"), InlineKeyboardButton("📢 پیام همگانی", callback_data=f"admin_broadcast")],
+                        [InlineKeyboardButton("📥 دریافت دیتابیس", callback_data=f"admin_backup"), InlineKeyboardButton("📤 آپلود دیتابیس", callback_data=f"admin_restore")],
                         [InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main")]
                     ])
                 )
@@ -4920,7 +4989,7 @@ async def inline_panel(update:Update, context: ContextTypes.DEFAULT_TYPE):
                         title=title,
                         description=desc,
                         input_message_content=InputTextMessageContent(f"✅ دستور {title} ارسال شد"),
-                        reply_markup=InlineKeyboardMarkup([[
+                        reply_markup=InlineKeyboardMarkup([[  # برای سرچ
                             InlineKeyboardButton(f"ℹ️ توضیحات", callback_data=f"desc_{cmd}", style="primary"),
                             InlineKeyboardButton(f"▶️ باز کردن", callback_data=f"menu_{cmd}", style="success")
                         ]])
@@ -4982,6 +5051,46 @@ def get_main_panel_keyboard(user_id):
     ]
     return InlineKeyboardMarkup(keyboard)
 
+# ========== منوی فونت ==========
+def get_font_menu_keyboard(user_id):
+    selected = get_selected_font(user_id)
+    keyboard = []
+    row = []
+    for i, font in enumerate(classic_fonts):
+        # نمایش نمونه فونت به صورت حروف 0 تا 9
+        sample = font[:10]  # فقط بخش اعداد را بگیر
+        tick = " ✓" if selected == i else ""
+        button_label = f"{i}: {sample}{tick}"
+        if len(button_label) > 30:
+            button_label = button_label[:28] + "…"
+        row.append(InlineKeyboardButton(button_label, callback_data=f"exec_font_{i}_{user_id}", style="primary" if selected != i else "success"))
+        if len(row) == 2:
+            keyboard.append(row)
+            row = []
+    if row:
+        keyboard.append(row)
+    keyboard.append([InlineKeyboardButton("⚈ بازگشت", callback_data=f"time_menu_{user_id}", style="danger")])
+    return InlineKeyboardMarkup(keyboard)
+
+# ========== منوی پرچم ==========
+def get_flag_menu_keyboard(user_id):
+    selected = get_selected_flag(user_id)
+    keyboard = []
+    row = []
+    for i, flag in enumerate(flags):
+        tick = " ✓" if selected == i else ""
+        button_label = f"{i}: {flag}{tick}"
+        if len(button_label) > 30:
+            button_label = button_label[:28] + "…"
+        row.append(InlineKeyboardButton(button_label, callback_data=f"exec_flag_{i}_{user_id}", style="primary" if selected != i else "success"))
+        if len(row) == 3:
+            keyboard.append(row)
+            row = []
+    if row:
+        keyboard.append(row)
+    keyboard.append([InlineKeyboardButton("⚈ بازگشت", callback_data=f"time_menu_{user_id}", style="danger")])
+    return InlineKeyboardMarkup(keyboard)
+
 def get_fortune_menu_keyboard(user_id):
     keyboard = [
         [InlineKeyboardButton("🌟 فال عمومی", callback_data=f"exec_fortune_general_{user_id}", style="primary")],
@@ -5003,6 +5112,10 @@ def get_time_menu_keyboard(user_id):
         [
             InlineKeyboardButton(f"🚫 تایم خاموش {'' if time_enabled else '✓'}", callback_data=f"exec_time_off_{user_id}", style="danger" if time_enabled else "primary"),
             InlineKeyboardButton("📅 تقویم", callback_data=f"exec_calendar_{user_id}", style="primary")
+        ],
+        [
+            InlineKeyboardButton("🎨 انتخاب فونت", callback_data=f"font_menu_{user_id}", style="primary"),
+            InlineKeyboardButton("🏳️ انتخاب پرچم", callback_data=f"flag_menu_{user_id}", style="primary")
         ],
         [
             InlineKeyboardButton("📝 تنظیمات بیو", callback_data=f"bio_menu_{user_id}", style="primary")
@@ -5231,6 +5344,7 @@ def get_user_menu_keyboard(user_id):
     ]
     return InlineKeyboardMarkup(keyboard)
 
+# ========== منوی قفل رسانه با راهنما ==========
 def get_lock_menu_keyboard(user_id):
     keyboard = [
         [
@@ -5257,10 +5371,43 @@ def get_lock_menu_keyboard(user_id):
             InlineKeyboardButton("📝 قفل متن", callback_data=f"exec_lock_text_{user_id}", style="danger")
         ],
         [
+            InlineKeyboardButton("📖 راهنما", callback_data=f"exec_lock_help_{user_id}", style="primary")
+        ],
+        [
             InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main", style="danger")
         ]
     ]
     return InlineKeyboardMarkup(keyboard)
+
+# ========== متن راهنمای قفل رسانه ==========
+def get_lock_help_text():
+    return """
+📖 **راهنمای قفل رسانه‌ها**
+
+شما می‌توانید انواع رسانه و محتوا را برای کاربران خاص یا همه کاربران قفل کنید.
+
+**نحوه کار:**
+• با ریپلای روی یک پیام، قفل برای آن کاربر خاص اعمال می‌شود.
+• اگر ریپلای نکنید، قفل برای **همه کاربران** اعمال می‌شود (قفل همگانی).
+
+**انواع قفل:**
+
+🔗 **لینک**: پیام‌های حاوی لینک (http, t.me, www, ...)
+📸 **عکس**: پیام‌های عکس
+🎥 **ویدیو**: پیام‌های ویدیویی
+🎨 **استیکر**: استیکرها
+🎞️ **گیف**: فایل‌های متحرک (GIF)
+🎤 **ویس**: پیام‌های صوتی (Voice)
+📁 **فایل**: فایل‌های معمولی (به جز استیکر و گیف)
+🎵 **موزیک**: فایل‌های صوتی (MP3 و غیره)
+📹 **ویدیو نوت**: پیام‌های ویدیویی کوتاه (ویدیو نوت)
+📞 **کانتکت**: پیام‌های تماس
+📍 **لوکیشن**: پیام‌های موقعیت مکانی
+😀 **ایموجی**: پیام‌های فقط ایموجی
+📝 **متن**: پیام‌های متنی (به جز لینک و ایموجی)
+
+**توجه:** قفل‌ها به صورت مستقل فعال/غیرفعال می‌شوند و پس از فعال شدن، پیام‌های مربوطه به‌طور خودکار حذف می‌شوند.
+    """
 
 def get_comment_menu_keyboard(user_id):
     keyboard = [
@@ -5537,6 +5684,140 @@ def get_report_menu_keyboard(user_id):
     ]
     return InlineKeyboardMarkup(keyboard)
 
+# ========== پنل ادمین ==========
+async def admin_panel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if not query:
+        return
+    await query.answer()
+    user_id = query.from_user.id
+    if user_id != ADMIN_ID:
+        await query.edit_message_text("⛔ دسترسی غیرمجاز")
+        return
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("📋 درخواست‌ها", callback_data="admin_requests", style="primary"), InlineKeyboardButton("🔐 منتظر ورود", callback_data="admin_login", style="primary")],
+        [InlineKeyboardButton("✅ کاربران فعال", callback_data="admin_active", style="success"), InlineKeyboardButton("🤖 سلف‌بات‌ها", callback_data="admin_selfbots", style="primary")],
+        [InlineKeyboardButton("📊 آمار کلی", callback_data="admin_stats", style="primary"), InlineKeyboardButton("📢 پیام همگانی", callback_data="admin_broadcast", style="primary")],
+        [InlineKeyboardButton("📥 دریافت دیتابیس", callback_data="admin_backup", style="primary"), InlineKeyboardButton("📤 آپلود دیتابیس", callback_data="admin_restore", style="primary")],
+        [InlineKeyboardButton("⚈ بازگشت", callback_data="back_main", style="danger")]
+    ])
+    await query.edit_message_text("👑 پنل مدیریت\n\nلطفاً انتخاب کنید:", reply_markup=keyboard)
+
+# ========== بکاپ دیتابیس ==========
+async def admin_backup_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if not query:
+        return
+    await query.answer()
+    user_id = query.from_user.id
+    if user_id != ADMIN_ID:
+        await query.answer("⛔ دسترسی غیرمجاز", show_alert=True)
+        return
+    try:
+        db_file = 'main_database.db'
+        if not os.path.exists(db_file):
+            await query.edit_message_text("❌ فایل دیتابیس یافت نشد")
+            return
+        # ایجاد یک کپی با زمان
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        backup_name = f"backup_{timestamp}.db"
+        import shutil
+        shutil.copy2(db_file, backup_name)
+        await query.edit_message_text("⏳ در حال ارسال فایل دیتابیس...")
+        with open(backup_name, 'rb') as f:
+            await context.bot.send_document(chat_id=user_id, document=f, filename=backup_name, caption=f"📥 بکاپ دیتابیس - {timestamp}")
+        os.remove(backup_name)
+        await query.message.delete()  # پاک کردن پیام قبلی
+    except Exception as e:
+        await query.edit_message_text(f"❌ خطا در ایجاد بکاپ: {e}")
+
+# ========== بازگردانی دیتابیس ==========
+async def admin_restore_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if not query:
+        return
+    await query.answer()
+    user_id = query.from_user.id
+    if user_id != ADMIN_ID:
+        await query.answer("⛔ دسترسی غیرمجاز", show_alert=True)
+        return
+    await query.edit_message_text(
+        "📤 لطفاً فایل دیتابیس خود را (با پسوند .db یا .sqlite) به‌عنوان سند (فایل) ارسال کنید.\n\n"
+        "⚠️ توجه: دیتابیس فعلی با فایل جدید جایگزین خواهد شد و تمام سلف‌بات‌ها ری‌استارت می‌شوند.\n\n"
+        "برای لغو، دستور /cancel را ارسال کنید."
+    )
+    context.user_data['restore_mode'] = True
+
+async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message or not update.message.document:
+        return
+    user_id = update.effective_user.id
+    if user_id != ADMIN_ID:
+        await update.message.reply_text("⛔ دسترسی غیرمجاز")
+        return
+    if not context.user_data.get('restore_mode'):
+        return
+    doc = update.message.document
+    # بررسی پسوند
+    filename = doc.file_name
+    if not (filename.endswith('.db') or filename.endswith('.sqlite')):
+        await update.message.reply_text("❌ پسوند فایل باید .db یا .sqlite باشد.")
+        return
+    await update.message.reply_text("⏳ در حال دریافت و بررسی فایل...")
+    # دانلود فایل
+    try:
+        file = await context.bot.get_file(doc.file_id)
+        temp_file = f"temp_restore_{int(time.time())}.db"
+        await file.download_to_drive(temp_file)
+        # بررسی اینکه آیا فایل دیتابیس معتبر است
+        try:
+            conn = sqlite3.connect(temp_file)
+            cursor = conn.cursor()
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
+            if not cursor.fetchone():
+                await update.message.reply_text("❌ فایل دیتابیس معتبر نیست (جدول users یافت نشد).")
+                os.remove(temp_file)
+                context.user_data['restore_mode'] = False
+                return
+            conn.close()
+        except Exception as e:
+            await update.message.reply_text(f"❌ فایل دیتابیس معتبر نیست: {e}")
+            os.remove(temp_file)
+            context.user_data['restore_mode'] = False
+            return
+        # بکاپ از دیتابیس فعلی
+        import shutil
+        current_db = 'main_database.db'
+        backup_current = f"backup_before_restore_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
+        if os.path.exists(current_db):
+            shutil.copy2(current_db, backup_current)
+            # اطلاع به ادمین
+            await context.bot.send_document(chat_id=user_id, document=open(backup_current, 'rb'), filename=backup_current, caption="📥 بکاپ قبل از بازگردانی")
+            os.remove(backup_current)
+        # جایگزینی
+        shutil.move(temp_file, current_db)
+        await update.message.reply_text("✅ دیتابیس با موفقیت جایگزین شد. در حال راه‌اندازی مجدد سلف‌بات‌های فعال...")
+        # ری‌استارت تمام سلف‌بات‌ها
+        active_users = db.get_active_users()
+        restarted = 0
+        for user in active_users:
+            uid = user['user_id']
+            session_file = user.get('session_file')
+            if session_file and os.path.exists(session_file):
+                if uid in selfbot_managers:
+                    await selfbot_managers[uid].stop()
+                    del selfbot_managers[uid]
+                manager = SelfBotManager(uid)
+                if await manager.start(session_file):
+                    selfbot_managers[uid] = manager
+                    restarted += 1
+                    await asyncio.sleep(0.5)  # جلوگیری از overload
+        await update.message.reply_text(f"✅ بازگردانی کامل شد.\n{restarted} سلف‌بات راه‌اندازی مجدد شدند.")
+        context.user_data['restore_mode'] = False
+    except Exception as e:
+        await update.message.reply_text(f"❌ خطا در بازگردانی: {e}")
+        context.user_data['restore_mode'] = False
+
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     q_data = getattr(query, 'data', None)
@@ -5629,6 +5910,22 @@ async def _button_callback_impl(update: Update, context: ContextTypes.DEFAULT_TY
     if data.startswith("membership_status_"):
         await membership_status_handler(update, context)
         return
+    # ====== اضافه کردن handlers برای منوهای جدید ======
+    if data.startswith("font_menu_"):
+        await query.edit_message_text("🎨 **انتخاب فونت تایم**\n\nروی فونت مورد نظر کلیک کنید:", reply_markup=get_font_menu_keyboard(user_id))
+        return
+    if data.startswith("flag_menu_"):
+        await query.edit_message_text("🏳️ **انتخاب پرچم**\n\nروی پرچم مورد نظر کلیک کنید:", reply_markup=get_flag_menu_keyboard(user_id))
+        return
+    if data == "lock_help":
+        await query.edit_message_text(get_lock_help_text(), reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⚈ بازگشت", callback_data="lock_menu_{user_id}")]]))
+        return
+    if data.startswith("admin_backup"):
+        await admin_backup_handler(update, context)
+        return
+    if data.startswith("admin_restore"):
+        await admin_restore_handler(update, context)
+        return
     if data.startswith("exec_"):
         await exec_command_handler(update, context)
         return
@@ -5719,6 +6016,44 @@ async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     
     msg = await context.bot.send_message(chat_id=chat_id, text=f"⏳ در حال اجرا...")
     
+    # ========== راهنمای قفل رسانه ==========
+    if cmd == 'lock_help':
+        await msg.edit_text(get_lock_help_text(), reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⚈ بازگشت", callback_data=f"lock_menu_{user_id}")]]))
+        return
+
+    # ========== انتخاب فونت ==========
+    if cmd.startswith('font_'):
+        try:
+            font_index = int(cmd.split('_')[1])
+        except (IndexError, ValueError):
+            await msg.edit_text("❌ خطا در شناسایی فونت")
+            return
+        if 0 <= font_index < len(classic_fonts):
+            set_selected_font(user_id, font_index)
+            manager.selected_font = font_index
+            await manager.update_profile_name()  # به‌روزرسانی فوری نام
+            await msg.edit_text(f"✅ فونت {font_index} انتخاب شد", reply_markup=get_font_menu_keyboard(user_id))
+        else:
+            await msg.edit_text("❌ فونت نامعتبر", reply_markup=get_font_menu_keyboard(user_id))
+        return
+
+    # ========== انتخاب پرچم ==========
+    if cmd.startswith('flag_'):
+        try:
+            flag_index = int(cmd.split('_')[1])
+        except (IndexError, ValueError):
+            await msg.edit_text("❌ خطا در شناسایی پرچم")
+            return
+        if 0 <= flag_index < len(flags):
+            set_selected_flag(user_id, flag_index)
+            manager.selected_flag = flag_index
+            await manager.update_profile_name()  # به‌روزرسانی فوری نام
+            await msg.edit_text(f"✅ پرچم {flag_index} انتخاب شد", reply_markup=get_flag_menu_keyboard(user_id))
+        else:
+            await msg.edit_text("❌ پرچم نامعتبر", reply_markup=get_flag_menu_keyboard(user_id))
+        return
+
+    # ========== بقیه دستورات ==========
     bio_commands = {
         'bio_time1': 'ساعت_در_بیو',
         'bio_time2': 'ساعت_در_بیو_۲',
@@ -6658,6 +6993,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.user_data.get('broadcast_mode') and user_id == ADMIN_ID:
         await handle_broadcast_message(update, context)
         return
+    if context.user_data.get('restore_mode') and user_id == ADMIN_ID:
+        # اگر در حالت restore باشد، هندلر داکیومنت کار می‌کند
+        pass
     user_data = db.get_user(user_id_str)
     if not user_data:
         await start(update, context)
@@ -6788,23 +7126,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             db.update_user(user_id_str, step='get_phone', phone=None, code=None, phone_code_hash=None, password=None)
     else:
         await update.message.reply_text("لطفاً روی دکمه عضویت کلیک کنید")
-
-async def admin_panel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    if not query:
-        return
-    await query.answer()
-    user_id = query.from_user.id
-    if user_id != ADMIN_ID:
-        await query.edit_message_text("⛔ دسترسی غیرمجاز")
-        return
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("📋 درخواست‌ها", callback_data="admin_requests", style="primary"), InlineKeyboardButton("🔐 منتظر ورود", callback_data="admin_login", style="primary")],
-        [InlineKeyboardButton("✅ کاربران فعال", callback_data="admin_active", style="success"), InlineKeyboardButton("🤖 سلف‌بات‌ها", callback_data="admin_selfbots", style="primary")],
-        [InlineKeyboardButton("📊 آمار کلی", callback_data="admin_stats", style="primary"), InlineKeyboardButton("📢 پیام همگانی", callback_data="admin_broadcast", style="primary")],
-        [InlineKeyboardButton("⚈ بازگشت", callback_data="back_main", style="danger")]
-    ])
-    await query.edit_message_text("👑 پنل مدیریت\n\nلطفاً انتخاب کنید:", reply_markup=keyboard)
 
 async def admin_requests_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -7101,6 +7422,7 @@ async def main():
     app.add_handler(InlineQueryHandler(inline_panel))
     app.add_handler(CallbackQueryHandler(button_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.add_handler(MessageHandler(filters.Document.ALL, handle_document))  # برای آپلود دیتابیس
     app.add_error_handler(global_error_handler)
     
     await app.initialize()
@@ -7154,7 +7476,7 @@ async def main():
 
 if __name__ == '__main__':
     print("=" * 60)
-    print("🔧 نسخه اصلاح‌شده - PATCH: ریکت‌گروه + ترجمه - v2026-07-01")
+    print("🔧 نسخه اصلاح‌شده - PATCH: ریکت‌گروه + ترجمه + فونت/پرچم + بکاپ - v2026-07-01")
     print("=" * 60)
     logger.info("🔧 نسخه اصلاح‌شده در حال اجراست - PATCH-2026-07-01-v2")
     web_thread = threading.Thread(target=run_web_server, daemon=True)
