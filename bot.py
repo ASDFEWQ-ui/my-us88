@@ -255,6 +255,7 @@ SPAM_MESSAGES = [
 
 BOT_VERSION = "4.9.0"
 BOT_CREATOR = "T.7"
+PANEL_HEADER_IMAGE = "panel_header.png"  # تصویر بالای پنل
 
 HEARTS = ["❤️", "🧡", "💛", "💚", "💙", "💜", "🤍"]
 MOONS = ["🌒", "🌓", "🌔", "🌕", "🌖", "🌗", "🌘", "🌑"]
@@ -4906,9 +4907,7 @@ async def inline_panel(update:Update, context: ContextTypes.DEFAULT_TYPE):
                 id=str(uuid.uuid4()),
                 title="⬛ T.7 CONTROL",
                 description="پنل مدیریت سلف‌بات",
-                input_message_content=InputTextMessageContent(
-                    f"⬛ T.7 CONTROL\n👤 {(query.from_user.full_name or query.from_user.first_name or 'User')}\n━━━━━━━━━━━━━━━━\nسلف‌بات آنلاین • دسترسی خصوصی"
-                ),
+                input_message_content=InputTextMessageContent(get_main_panel_text(query.from_user)),
                 reply_markup=get_main_panel_keyboard(user_id)
             ),
         ]
@@ -4974,6 +4973,30 @@ async def inline_panel(update:Update, context: ContextTypes.DEFAULT_TYPE):
                 )
     await query.answer(results, cache_time=0, is_personal=True)
 
+
+
+def get_main_panel_text(user):
+    """متن اصلی پنل بدون Markdown تا خطای parse entities ندهد"""
+    try:
+        name = getattr(user, 'full_name', None) or getattr(user, 'first_name', None) or "User"
+    except Exception:
+        name = "User"
+    # کاراکترهای مشکل‌ساز مارک‌داون را خنثی می‌کنیم
+    for ch in ('_', '*', '`', '['):
+        name = name.replace(ch, ' ')
+    return (
+        f"⬛ T.7 CONTROL\n"
+        f"👤 {name}\n"
+        f"━━━━━━━━━━━━━━━━\n"
+        f"سلف‌بات آنلاین • دسترسی خصوصی\n"
+        f"نسخه {BOT_VERSION}"
+    )
+
+def get_help_back_keyboard(user_id, back_callback):
+    """دکمه بازگشت برای صفحات راهنما"""
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔙 بازگشت", callback_data=back_callback, style="danger")]
+    ])
 
 async def refresh_panel_keyboard(query, user_id, menu_text, keyboard_func):
     """به‌روزرسانی فوری کیبورد پنل با تیک‌های جدید"""
@@ -5805,16 +5828,21 @@ async def _button_callback_impl(update: Update, context: ContextTypes.DEFAULT_TY
             await query.edit_message_text("✅ پنل بسته شد")
         return
     if data == "back_main":
-        name = (query.from_user.full_name or query.from_user.first_name or "User")
-        await query.edit_message_text(
-            f"⬛ **T.7 CONTROL**\n"
-            f"👤 {name}\n"
-            f"━━━━━━━━━━━━━━━━\n"
-            f"سلف‌بات آنلاین • دسترسی خصوصی\n"
-            f"نسخه {BOT_VERSION}",
-            reply_markup=get_main_panel_keyboard(user_id),
-            parse_mode='Markdown'
-        )
+        try:
+            await query.edit_message_text(
+                get_main_panel_text(query.from_user),
+                reply_markup=get_main_panel_keyboard(user_id)
+            )
+        except Exception as e:
+            # اگر پیام عکس‌دار بود و فقط caption قابل ویرایش است
+            try:
+                await query.edit_message_caption(
+                    caption=get_main_panel_text(query.from_user),
+                    reply_markup=get_main_panel_keyboard(user_id)
+                )
+            except Exception as e2:
+                logger.error(f"back_main edit failed: {e} | {e2}")
+                await query.answer("پنل به‌روز شد", show_alert=False)
         return
     if data == "admin_panel":
         await admin_panel_handler(update, context)
@@ -6437,7 +6465,17 @@ async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 📝 **قفل متن** — ارسال پیام متنی ساده مسدود می‌شود.
 
 ⚠️ **نکته:** قفل‌ها فقط روی پیام‌های ورودی دیگران اعمال می‌شوند و روی پیام‌های خود شما تأثیری ندارند. برای قفل کلی پی‌وی از بخش «مدیریت کاربران» استفاده کنید."""
-        await msg.edit_text(help_text)
+        try:
+            await query.edit_message_text(
+                help_text,
+                reply_markup=get_help_back_keyboard(user_id, f"lock_menu_{user_id}")
+            )
+        except Exception:
+            await msg.edit_text(help_text, reply_markup=get_help_back_keyboard(user_id, f"lock_menu_{user_id}"))
+        try:
+            await msg.delete()
+        except Exception:
+            pass
         return
     
 
@@ -6619,11 +6657,56 @@ async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 🕌 **فال حافظ** — بیت حافظ.
 ☕ **فال قهوه** — فال قهوه.""",
     }
-    if cmd in HELP_TEXTS:
-        await msg.edit_text(HELP_TEXTS[cmd])
-        return
-    if cmd.endswith('_help') and cmd in HELP_TEXTS:
-        await msg.edit_text(HELP_TEXTS[cmd])
+    # نقشه بازگشت راهنما به منوی والد
+    HELP_BACK = {
+        'google_help': f'google_menu_{user_id}',
+        'time_help': f'time_menu_{user_id}',
+        'animation_help': f'animation_menu_{user_id}',
+        'user_help': f'user_menu_{user_id}',
+        'lock_help': f'lock_menu_{user_id}',
+        'comment_help': f'comment_menu_{user_id}',
+        'general_help': f'general_menu_{user_id}',
+        'action_help': f'action_menu_{user_id}',
+        'games_help': f'games_menu_{user_id}',
+        'translate_help': f'translate_menu_{user_id}',
+        'info_help': f'info_menu_{user_id}',
+        'profile_help': f'profile_menu_{user_id}',
+        'style_help': f'style_menu_{user_id}',
+        'message_help': f'message_menu_{user_id}',
+        'reaction_help': f'reaction_menu_{user_id}',
+        'spam_help': f'spam_menu_{user_id}',
+        'change_help': f'change_menu_{user_id}',
+        'enemy_help': f'enemy_menu_{user_id}',
+        'filter_help': f'filter_menu_{user_id}',
+        'protection_help': f'protection_menu_{user_id}',
+        'ai_help': f'ai_menu_{user_id}',
+        'report_help': f'report_menu_{user_id}',
+        'tools_help': f'tools_menu_{user_id}',
+        'monshi_help': f'monshi_menu_{user_id}',
+        'mention_help': f'mention_menu_{user_id}',
+        'fortune_help': f'fortune_menu_{user_id}',
+    }
+    if cmd in HELP_TEXTS or (cmd.endswith('_help') and cmd in HELP_TEXTS):
+        help_body = HELP_TEXTS.get(cmd, "راهنما موجود نیست")
+        back_cb = HELP_BACK.get(cmd, 'back_main')
+        # نمایش راهنما داخل خود پنل + دکمه بازگشت
+        try:
+            await query.edit_message_text(
+                help_body,
+                reply_markup=get_help_back_keyboard(user_id, back_cb)
+            )
+        except Exception:
+            try:
+                await query.edit_message_caption(
+                    caption=help_body[:1024],
+                    reply_markup=get_help_back_keyboard(user_id, back_cb)
+                )
+            except Exception:
+                await msg.edit_text(help_body, reply_markup=get_help_back_keyboard(user_id, back_cb))
+        try:
+            await msg.delete()
+        except Exception:
+            pass
         return
 
     translate_commands = {
@@ -7118,38 +7201,44 @@ async def panel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.delete()
     except:
         pass
-    name = user.full_name or user.first_name or "User"
-    caption = (
-        f"⬛ **T.7 CONTROL**\n"
-        f"👤 {name}\n"
-        f"━━━━━━━━━━━━━━━━\n"
-        f"سلف‌بات آنلاین • دسترسی خصوصی\n"
-        f"نسخه `{BOT_VERSION}`\n\n"
-        f"برای باز کردن منو روی دکمه زیر بزنید."
-    )
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("⬛ باز کردن پنل T.7", switch_inline_query_current_chat="")]
-    ])
-    # سعی در ارسال عکس پروفایل کاربر به‌جای تصویر پیش‌فرض
+    caption = get_main_panel_text(user)
+    keyboard = get_main_panel_keyboard(user_id)
+    # مسیرهای ممکن تصویر هدر پنل
+    candidates = [
+        PANEL_HEADER_IMAGE,
+        "panel_header.png",
+        "/app/panel_header.png",
+        os.path.join("media_storage", "panel_header.png"),
+    ]
     try:
-        photos = await context.bot.get_user_profile_photos(user_id, limit=1)
-        if photos and photos.total_count > 0:
-            file_id = photos.photos[0][-1].file_id
-            await context.bot.send_photo(
-                chat_id=update.effective_chat.id,
-                photo=file_id,
-                caption=caption,
-                reply_markup=keyboard,
-                parse_mode='Markdown'
-            )
+        candidates.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), PANEL_HEADER_IMAGE))
+    except Exception:
+        pass
+    photo_path = None
+    for p in candidates:
+        try:
+            if p and os.path.exists(p):
+                photo_path = p
+                break
+        except Exception:
+            pass
+    if photo_path:
+        try:
+            with open(photo_path, "rb") as f:
+                await context.bot.send_photo(
+                    chat_id=update.effective_chat.id,
+                    photo=f,
+                    caption=caption,
+                    reply_markup=keyboard
+                )
             return
-    except Exception as e:
-        logger.debug(f"profile photo panel: {e}")
+        except Exception as e:
+            logger.error(f"ارسال عکس پنل: {e}")
+    # fallback بدون عکس
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
         text=caption,
-        reply_markup=keyboard,
-        parse_mode='Markdown'
+        reply_markup=keyboard
     )
 
 async def membership_request_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
