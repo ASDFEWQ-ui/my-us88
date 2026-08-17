@@ -1,5 +1,4 @@
-[file name]: import os.txt
-[file content begin]
+
 import os
 import sqlite3
 import logging
