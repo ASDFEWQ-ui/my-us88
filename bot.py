@@ -2841,26 +2841,119 @@ class SelfBotManager:
         # ========== استیکر متن ==========
         if cmd == 'استیکر' and args and args[0] == 'متن':
             text = ' '.join(args[1:])
+            if not text:
+                await event.edit("⚠️ فرمت: استیکر متن [متن]")
+                return
             try:
-                img = Image.new('RGBA', (512, 512), (255, 255, 255, 0))
+                img = Image.new('RGBA', (512, 512), (0, 0, 0, 0))
                 draw = ImageDraw.Draw(img)
                 try:
-                    font = ImageFont.truetype("font.ttf", 50)
-                except:
-                    font = ImageFont.load_default()
-                bbox = draw.textbbox((0, 0), text, font=font)
-                text_width = bbox[2] - bbox[0]
-                text_height = bbox[3] - bbox[1]
-                x = (512 - text_width) // 2
-                y = (512 - text_height) // 2
-                draw.text((x, y), text, fill=(0, 0, 0, 255), font=font)
+                    font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 48)
+                except Exception:
+                    try:
+                        font = ImageFont.truetype("font.ttf", 48)
+                    except Exception:
+                        font = ImageFont.load_default()
+                # wrap text
+                words = text.split()
+                lines, cur = [], ""
+                for w in words:
+                    test = (cur + " " + w).strip()
+                    bbox = draw.textbbox((0, 0), test, font=font)
+                    if bbox[2] - bbox[0] > 480 and cur:
+                        lines.append(cur)
+                        cur = w
+                    else:
+                        cur = test
+                if cur:
+                    lines.append(cur)
+                total_h = 0
+                line_sizes = []
+                for ln in lines:
+                    bbox = draw.textbbox((0, 0), ln, font=font)
+                    line_sizes.append((bbox[2]-bbox[0], bbox[3]-bbox[1]))
+                    total_h += bbox[3]-bbox[1] + 8
+                y = max(0, (512 - total_h) // 2)
+                for ln, (lw, lh) in zip(lines, line_sizes):
+                    x = (512 - lw) // 2
+                    draw.text((x, y), ln, fill=(255, 255, 255, 255), font=font)
+                    y += lh + 8
                 output = BytesIO()
                 img.save(output, format='WEBP')
+                output.name = "sticker.webp"
                 output.seek(0)
-                await self.client.send_file(chat_id, output)
+                await self.client.send_file(
+                    chat_id, output,
+                    force_document=False,
+                    attributes=[types.DocumentAttributeSticker(
+                        alt=text[:16],
+                        stickerset=types.InputStickerSetEmpty(),
+                        mask=False
+                    )]
+                )
                 await event.delete()
             except Exception as e:
-                await event.edit(f"❌ خطا: {e}")
+                logger.error(f"استیکر متن: {e}")
+                try:
+                    await event.edit(f"❌ خطا: {e}")
+                except Exception:
+                    pass
+            return
+        
+        # ========== عکس → استیکر / فیلم → گیف ==========
+        if cmd == 'استیکر' and (not args or (args and args[0] not in ('متن',))):
+            if not event.message.is_reply:
+                await event.edit("⚠️ روی عکس ریپلای کنید و بنویسید: استیکر")
+                return
+            try:
+                reply_msg = await event.get_reply_message()
+                if not reply_msg or not reply_msg.media:
+                    await event.edit("❌ رسانه یافت نشد")
+                    return
+                await event.edit("⏳ در حال تبدیل...")
+                # دانلود رسانه
+                buf = BytesIO()
+                path = await self.client.download_media(reply_msg, file=buf)
+                buf.seek(0)
+                is_video = bool(reply_msg.video or reply_msg.gif or (reply_msg.document and getattr(reply_msg.document, 'mime_type', '').startswith('video')))
+                if is_video:
+                    # ارسال به عنوان گیف/انیمیشن
+                    buf.name = "anim.mp4"
+                    await self.client.send_file(chat_id, buf, force_document=False, supports_streaming=True, video_note=False)
+                    # تلاش برای ارسال به صورت gif-like
+                    try:
+                        buf.seek(0)
+                        await self.client.send_file(chat_id, buf, attributes=[types.DocumentAttributeAnimated()], force_document=False)
+                    except Exception:
+                        pass
+                else:
+                    # تبدیل به استیکر webp 512
+                    try:
+                        img = Image.open(buf).convert('RGBA')
+                        img = ImageOps.fit(img, (512, 512), centering=(0.5, 0.5))
+                        out = BytesIO()
+                        img.save(out, format='WEBP')
+                        out.name = "sticker.webp"
+                        out.seek(0)
+                        await self.client.send_file(
+                            chat_id, out,
+                            force_document=False,
+                            attributes=[types.DocumentAttributeSticker(
+                                alt="🙂",
+                                stickerset=types.InputStickerSetEmpty(),
+                                mask=False
+                            )]
+                        )
+                    except Exception as e:
+                        buf.seek(0)
+                        await self.client.send_file(chat_id, buf)
+                await event.delete()
+            except Exception as e:
+                logger.error(f"استیکر convert: {e}")
+                try:
+                    await event.edit(f"❌ خطا: {str(e)[:80]}")
+                except Exception:
+                    pass
             return
         
         # ========== ساخت استیکر با @QuotLyBot ==========
@@ -4063,61 +4156,95 @@ class SelfBotManager:
                 name = getattr(target, 'first_name', '') or ''
                 if getattr(target, 'last_name', None):
                     name += ' ' + target.last_name
-                uname = f"@{target.username}" if getattr(target, 'username', None) else "—"
+                uname = f"@{target.username}" if getattr(target, 'username', None) else "ندارد"
+                phone = getattr(target, 'phone', None) or "—"
+                is_bot = "بله" if getattr(target, 'bot', False) else "خیر"
+                is_premium = "بله" if getattr(target, 'premium', False) else "خیر"
                 is_enemy_pv = db.is_enemy(self.user_id, tid, 'pv')
                 is_enemy_g = db.is_enemy(self.user_id, tid, 'group')
                 is_pv_locked = db.is_pv_locked(self.user_id, tid)
-                locks = {}
-                for lt in ['lock_sticker', 'lock_photo', 'lock_video', 'lock_link', 'lock_voice', 'lock_text']:
-                    locks[lt] = db.get_user_lock(self.user_id, tid, lt)
-                text = (
-                    f"👤 پنل کاربر\n"
+                caption = (
+                    f"👤 {name}\n"
+                    f"🆔 {tid}\n"
+                    f"📎 {uname}\n"
+                    f"🤖 ربات: {is_bot} | ⭐ پرمیوم: {is_premium}\n"
                     f"━━━━━━━━━━━━━━\n"
-                    f"نام: {name}\n"
-                    f"آیدی: {tid}\n"
-                    f"یوزرنیم: {uname}\n"
-                    f"━━━━━━━━━━━━━━\n"
-                    f"دشمن پیوی: {'✅' if is_enemy_pv else '❌'}\n"
-                    f"دشمن گروه: {'✅' if is_enemy_g else '❌'}\n"
-                    f"قفل پیوی: {'✅' if is_pv_locked else '❌'}\n"
-                    f"قفل استیکر: {'✅' if locks.get('lock_sticker') else '❌'}\n"
-                    f"قفل عکس: {'✅' if locks.get('lock_photo') else '❌'}\n"
-                    f"قفل ویدیو: {'✅' if locks.get('lock_video') else '❌'}\n"
-                    f"قفل لینک: {'✅' if locks.get('lock_link') else '❌'}\n"
-                    f"\n✅ این کاربر به‌عنوان هدف قفل ذخیره شد.\n"
-                    f"از پنل ربات → قفل رسانه، قفل‌ها فقط برای همین کاربر اعمال می‌شوند.\n"
-                    f"\nدستورات سریع با ریپلای:\n"
-                    f"• دشمن / دوست\n"
-                    f"• دشمن گروه / دوست گروه\n"
-                    f"• قفل استیکر روشن/خاموش\n"
-                    f"• قفل پیوی"
+                    f"دشمن پیوی: {'✅' if is_enemy_pv else '❌'} | دشمن گروه: {'✅' if is_enemy_g else '❌'}\n"
+                    f"قفل پیوی: {'✅' if is_pv_locked else '❌'}"
                 )
+                # دانلود آواتار و ساخت تصویر طراحی‌شده
+                avatar_path = None
                 try:
                     photos = await self.client.get_profile_photos(target, limit=1)
                     if photos:
-                        await event.delete()
-                        await self.client.send_file(chat_id, photos[0], caption=text)
-                    else:
-                        await event.edit(text)
-                except Exception:
-                    await event.edit(text)
-                # ارسال پنل دکمه‌دار به پیوی با ربات
-                try:
-                    kb_dict = {
-                        'inline_keyboard': [
-                            [{'text': b.text, 'callback_data': b.callback_data} for b in row]
-                            for row in get_user_manage_keyboard(self.user_id, tid).inline_keyboard
-                        ]
-                    }
-                    requests.post(
-                        f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-                        json={'chat_id': self.user_id, 'text': f"👤 مدیریت {name}\nID: {tid}", 'reply_markup': kb_dict},
-                        timeout=12
-                    )
+                        avatar_path = os.path.join(MEDIA_FOLDER, f"uav_{tid}.jpg")
+                        os.makedirs(MEDIA_FOLDER, exist_ok=True)
+                        await self.client.download_media(photos[0], file=avatar_path)
                 except Exception as e:
-                    logger.debug(f"پنل کاربر bot kb: {e}")
+                    logger.debug(f"avatar dl: {e}")
+                photo_path = render_user_panel_image(name, avatar_path)
+                if avatar_path:
+                    try:
+                        os.remove(avatar_path)
+                    except Exception:
+                        pass
+                kb = get_user_manage_keyboard(self.user_id, tid)
+                kb_dict = {
+                    'inline_keyboard': [
+                        [{'text': b.text, 'callback_data': b.callback_data} for b in row]
+                        for row in kb.inline_keyboard
+                    ]
+                }
+                api = f"https://api.telegram.org/bot{BOT_TOKEN}"
+                sent = False
+                # اول در همین چت، بعد در پیوی کاربر با ربات
+                for dest in (chat_id, self.user_id):
+                    try:
+                        if photo_path and os.path.exists(photo_path):
+                            with open(photo_path, 'rb') as f:
+                                r = requests.post(
+                                    f"{api}/sendPhoto",
+                                    data={
+                                        'chat_id': dest,
+                                        'caption': caption,
+                                        'reply_markup': json.dumps(kb_dict),
+                                    },
+                                    files={'photo': ('panel.jpg', f, 'image/jpeg')},
+                                    timeout=25
+                                )
+                            if r.status_code == 200 and r.json().get('ok'):
+                                sent = True
+                                break
+                            else:
+                                logger.debug(f"sendPhoto fail: {r.text[:200]}")
+                        else:
+                            r = requests.post(
+                                f"{api}/sendMessage",
+                                json={'chat_id': dest, 'text': caption, 'reply_markup': kb_dict},
+                                timeout=15
+                            )
+                            if r.status_code == 200 and r.json().get('ok'):
+                                sent = True
+                                break
+                    except Exception as e:
+                        logger.debug(f"send user panel dest={dest}: {e}")
+                if photo_path:
+                    try:
+                        os.remove(photo_path)
+                    except Exception:
+                        pass
+                try:
+                    await event.delete()
+                except Exception:
+                    pass
+                if not sent:
+                    await self.client.send_message(chat_id, caption)
             except Exception as e:
-                await event.edit(f"❌ خطا: {str(e)[:80]}")
+                logger.error(f"پنل کاربر: {e}\n{traceback.format_exc()}")
+                try:
+                    await event.edit(f"❌ خطا: {str(e)[:100]}")
+                except Exception:
+                    pass
             return
         
         if cmd == 'امار' and args and args[0] == 'گپ' and len(args) == 1:
@@ -4540,27 +4667,29 @@ class SelfBotManager:
     
     async def heart_animation(self, chat_id):
         try:
-            message = await self.client.send_message(chat_id, HEARTS[0])
-            for i in range(1, len(HEARTS) * 99999):
-                await asyncio.sleep(4)
-                await self.client.edit_message(chat_id, message, HEARTS[i % len(HEARTS)])
-            settings = db.get_selfbot_settings(self.user_id)
-            if chat_id != abs(self.report_config.report_group_id):
-                await self.client.delete_messages(chat_id, message)
-        except:
-            pass
+            entity = await self.client.get_entity(chat_id)
+            message = await self.client.send_message(entity, HEARTS[0])
+            for i in range(1, len(HEARTS) * 3):
+                await asyncio.sleep(0.8)
+                try:
+                    await message.edit(HEARTS[i % len(HEARTS)])
+                except Exception:
+                    break
+        except Exception as e:
+            logger.error(f"heart_animation: {e}")
     
     async def moon_animation(self, chat_id):
         try:
-            message = await self.client.send_message(chat_id, MOONS[0])
-            for i in range(1, len(MOONS) * 1):
-                await asyncio.sleep(3)
-                await self.client.edit_message(chat_id, message, MOONS[i % len(MOONS)])
-            settings = db.get_selfbot_settings(self.user_id)
-            if chat_id != abs(self.report_config.report_group_id):
-                await self.client.delete_messages(chat_id, message)
-        except:
-            pass
+            entity = await self.client.get_entity(chat_id)
+            message = await self.client.send_message(entity, MOONS[0])
+            for i in range(1, len(MOONS) * 3):
+                await asyncio.sleep(0.8)
+                try:
+                    await message.edit(MOONS[i % len(MOONS)])
+                except Exception:
+                    break
+        except Exception as e:
+            logger.error(f"moon_animation: {e}")
     
     async def get_user_info(self, user_id):
         try:
@@ -5513,6 +5642,75 @@ def render_panel_image(username: str, avatar_path: str = None) -> str:
         for p in [PANEL_HEADER_IMAGE, "panel_header.png", "panel_header_base.png"]:
             if os.path.exists(p):
                 return p
+        return None
+
+
+
+def render_user_panel_image(username: str, avatar_path: str = None) -> str:
+    """تصویر پنل کاربر: طراحی VROOM + آواتار همان کاربر + نام کاربر پایین"""
+    try:
+        from PIL import Image, ImageDraw, ImageFont, ImageOps
+        base_candidates = [
+            "user_panel_header.png",
+            PANEL_HEADER_IMAGE,
+            "panel_header.png",
+            "panel_header_base.png",
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "user_panel_header.png"),
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "panel_header.png"),
+            os.path.join("media_storage", "user_panel_header.png"),
+            os.path.join("media_storage", "panel_header.png"),
+        ]
+        base_path = None
+        for pth in base_candidates:
+            try:
+                if pth and os.path.exists(pth) and os.path.getsize(pth) > 1000:
+                    base_path = pth
+                    break
+            except Exception:
+                continue
+        if not base_path:
+            return None
+        img = Image.open(base_path).convert('RGBA')
+        W, H = img.size
+        try:
+            font_name = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", max(36, W // 24))
+        except Exception:
+            font_name = ImageFont.load_default()
+        safe_name = (username or "User")[:28]
+        for ch in ('_', '*', '`', '[', ']'):
+            safe_name = safe_name.replace(ch, ' ')
+        if avatar_path and os.path.exists(avatar_path):
+            try:
+                avatar = Image.open(avatar_path).convert('RGBA')
+                size = int(min(W, H) * 0.22)
+                avatar = ImageOps.fit(avatar, (size, size), centering=(0.5, 0.5))
+                mask = Image.new('L', (size, size), 0)
+                ImageDraw.Draw(mask).ellipse((0, 0, size - 1, size - 1), fill=255)
+                avatar.putalpha(mask)
+                pos_x = (W - size) // 2
+                pos_y = int(H * 0.30) - size // 2
+                img.paste(avatar, (pos_x, pos_y), avatar)
+            except Exception as e:
+                logger.debug(f"user panel avatar: {e}")
+        bar_h = int(H * 0.11)
+        overlay = Image.new('RGBA', (W, bar_h), (5, 8, 14, 210))
+        img.paste(overlay, (0, H - bar_h), overlay)
+        draw = ImageDraw.Draw(img)
+        try:
+            bbox = draw.textbbox((0, 0), safe_name, font=font_name)
+            tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+        except Exception:
+            tw, th = len(safe_name) * 18, 32
+        text_x = max(0, (W - tw) // 2)
+        text_y = H - bar_h + max(0, (bar_h - th) // 2 - 2)
+        draw.text((text_x + 2, text_y + 2), safe_name, font=font_name, fill=(0, 15, 35, 160))
+        draw.text((text_x, text_y), safe_name, font=font_name, fill=(160, 220, 255, 255))
+        out = os.path.join(MEDIA_FOLDER, f"up_{abs(hash(safe_name + str(avatar_path or ''))) % 10**9}.png")
+        os.makedirs(MEDIA_FOLDER, exist_ok=True)
+        img.convert('RGB').save(out, 'PNG', quality=95)
+        return out
+    except Exception as e:
+        logger.error(f"render_user_panel_image: {e}")
         return None
 
 
@@ -6697,14 +6895,15 @@ async def _button_callback_impl(update: Update, context: ContextTypes.DEFAULT_TY
             elif action.startswith('lock_'):
                 cur = db.get_user_lock(owner_id, target_id, action)
                 db.set_user_lock(owner_id, target_id, action, not cur)
+            kb = get_user_manage_keyboard(owner_id, target_id)
             try:
-                await query.edit_message_reply_markup(reply_markup=get_user_manage_keyboard(owner_id, target_id))
+                if query.message and query.message.photo:
+                    await query.edit_message_reply_markup(reply_markup=kb)
+                else:
+                    await query.edit_message_reply_markup(reply_markup=kb)
             except Exception:
                 try:
-                    await query.edit_message_text(
-                        query.message.text or query.message.caption or "👤 مدیریت کاربر",
-                        reply_markup=get_user_manage_keyboard(owner_id, target_id)
-                    )
+                    await safe_edit_panel(query, query.message.caption or query.message.text or "👤 مدیریت کاربر", reply_markup=kb)
                 except Exception:
                     pass
         except Exception as e:
@@ -6715,13 +6914,13 @@ async def _button_callback_impl(update: Update, context: ContextTypes.DEFAULT_TY
         await exec_command_handler(update, context)
         return
     if data.startswith("bio_menu_"):
-        await query.edit_message_text("› تنظیمات بیو\n\nانتخاب کنید:", reply_markup=get_bio_menu_keyboard(user_id))
+        await safe_edit_panel(query, "› تنظیمات بیو", reply_markup=get_bio_menu_keyboard(user_id))
         return
     if data.startswith("font_menu_"):
-        await query.edit_message_text("› انتخاب فونت تایم\n\nفونت‌های انتخاب‌شده به ترتیب در پروفایل چرخش می‌کنند.\nروی هر فونت بزنید تا تیک بخورد (چندتایی هم می‌شود).\n«همه فونت‌ها» یعنی چرخش خودکار روی همه.", reply_markup=get_font_menu_keyboard(user_id))
+        await safe_edit_panel(query, "› انتخاب فونت تایم", reply_markup=get_font_menu_keyboard(user_id))
         return
     if data.startswith("flag_menu_"):
-        await query.edit_message_text("› انتخاب پرچم\n\nپرچم‌های انتخاب‌شده در تایمر پرچم استفاده می‌شوند.\nروی هر پرچم بزنید تا تیک بخورد.\n«همه پرچم‌ها» یعنی چرخش خودکار روی همه.", reply_markup=get_flag_menu_keyboard(user_id))
+        await safe_edit_panel(query, "› انتخاب پرچم", reply_markup=get_flag_menu_keyboard(user_id))
         return
     
     parts = data.split('_')
@@ -7710,17 +7909,19 @@ async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     
     if cmd == 'heart':
         try:
-            await msg.delete()
+            if msg: await msg.delete()
         except Exception:
             pass
-        asyncio.create_task(manager.heart_animation(query.message.chat_id))
+        target_chat = chat_id or (query.message.chat_id if query.message else user_id)
+        asyncio.create_task(manager.heart_animation(target_chat))
         return
     if cmd == 'moon':
         try:
-            await msg.delete()
+            if msg: await msg.delete()
         except Exception:
             pass
-        asyncio.create_task(manager.moon_animation(query.message.chat_id))
+        target_chat = chat_id or (query.message.chat_id if query.message else user_id)
+        asyncio.create_task(manager.moon_animation(target_chat))
         return
     
     if cmd == 'enemy':
