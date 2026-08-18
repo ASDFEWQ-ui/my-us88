@@ -868,6 +868,10 @@ class MainDatabase:
     def update_selfbot_setting(self, user_id, key, value):
         conn = sqlite3.connect(self.db_name)
         cursor = conn.cursor()
+        cursor.execute('SELECT user_id FROM selfbot_settings WHERE user_id = ?', (user_id,))
+        if not cursor.fetchone():
+            # اگر ردیف وجود ندارد، اول بساز
+            self.get_selfbot_settings(user_id)
         cursor.execute(f'UPDATE selfbot_settings SET {key} = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?', (value, user_id))
         conn.commit()
         conn.close()
@@ -1709,7 +1713,7 @@ async def get_ai_response(text, ai_type, user_id=None):
         pass
     return None
 
-COMMAND_KEYWORDS = ('لیست', 'شروع', 'تایم', 'قلب', 'ماه', 'اطلاعات', 'دانلود', 'تاریخ', 'فعال', 'غیرفعال', 'حذف', 'ست', 'بولد', 'زیرخط', 'خط خورده', 'نقل قول', 'اسپویلر', 'کج', 'کد', 'پیش', 'اسپم', 'بلاک', 'ریکت', 'پیوی', 'گروه', 'درباره', 'من کی ام', 'قفل', 'باز', 'تنظیم', 'گروه گزارش', 'دشمن', 'دوست', 'دشمن گروه', 'دوست گروه', 'کانال', 'کامنت', 'تست', 'لیست دشمن', 'لیست اسپم', 'پاک کردن اسپم', 'حذف اسپم', 'اضافه اسپم', 'اتمام اسپم', 'تغییر اسم', 'تغییر بیو', 'تغییر پروفایل', 'پروف', 'اسپم روشن', 'اسپم خاموش', 'پینگ', 'سرچ', 'خروج سرچ', 'قلب پیشرفته', 'عشق', 'سنتت', 'هک', 'وضعیت', '.پنل', 'پنل', '/panel', '.اهنگ', 'تنظیم اسپم', 'سلف روشن', 'سلف خاموش', 'پین', 'تگ ادمین', 'امار گپ', '.کد', 'تقویم', 'فونت', 'انگلیسی', 'عربی', 'عبری', 'روسی', 'ترکی', 'اتوسین', 'تگ همه', 'لغو تگ', 'منشی', 'افزودن پاسخ', 'حذف پاسخ', 'لیست پاسخ', 'پاک کردن پاسخ‌ها', 'بولینگ', 'تاس', 'سه رنگ', 'شانس', 'تاریخ ساخت اکانت', 'نشست‌های فعال', 'اطلاعات سیستم', 'قیمت ارز', 'نرخ ارز', 'استیکر متن', 'ساخت استیکر', 'اسکرین‌شات', 'تشخیص متن', 'ساعت در بیو', 'ساعت در بیو ۲', 'بیو تاریخ', 'بیو کامل', 'بیو عاشقانه')
+COMMAND_KEYWORDS = ('لیست', 'شروع', 'تایم', 'قلب', 'ماه', 'اطلاعات', 'دانلود', 'تاریخ', 'فعال', 'غیرفعال', 'حذف', 'ست', 'بولد', 'زیرخط', 'خط خورده', 'نقل قول', 'اسپویلر', 'کج', 'کد', 'پیش', 'اسپم', 'بلاک', 'ریکت', 'پیوی', 'گروه', 'درباره', 'من کی ام', 'قفل', 'باز', 'تنظیم', 'گروه گزارش', 'دشمن', 'دوست', 'دشمن گروه', 'دوست گروه', 'کانال', 'کامنت', 'تست', 'لیست دشمن', 'لیست اسپم', 'پاک کردن اسپم', 'حذف اسپم', 'اضافه اسپم', 'اتمام اسپم', 'تغییر اسم', 'تغییر بیو', 'تغییر پروفایل', 'پروف', 'اسپم روشن', 'اسپم خاموش', 'پینگ', 'سرچ', 'خروج سرچ', 'قلب پیشرفته', 'عشق', 'سنتت', 'هک', 'وضعیت', '.پنل', 'پنل', 'پنل کاربر', '/panel', '.اهنگ', 'تنظیم اسپم', 'سلف روشن', 'سلف خاموش', 'پین', 'تگ ادمین', 'امار گپ', '.کد', 'تقویم', 'فونت', 'انگلیسی', 'عربی', 'عبری', 'روسی', 'ترکی', 'اتوسین', 'تگ همه', 'لغو تگ', 'منشی', 'افزودن پاسخ', 'حذف پاسخ', 'لیست پاسخ', 'پاک کردن پاسخ‌ها', 'بولینگ', 'تاس', 'سه رنگ', 'شانس', 'تاریخ ساخت اکانت', 'نشست‌های فعال', 'اطلاعات سیستم', 'قیمت ارز', 'نرخ ارز', 'استیکر متن', 'ساخت استیکر', 'اسکرین‌شات', 'تشخیص متن', 'ساعت در بیو', 'ساعت در بیو ۲', 'بیو تاریخ', 'بیو کامل', 'بیو عاشقانه')
 
 # نگاشت زبان‌های فارسی به کدهای استاندارد ISO که deep_translator تضمینی می‌شناسد
 TRANSLATE_LANG_CODES = {
@@ -1909,14 +1913,43 @@ class SelfBotManager:
     def set_bio_setting(self, setting_name, status):
         db.set_bio_setting(self.user_id, setting_name, status)
     
+    async def ensure_original_bio_saved(self):
+        """اولین بار بیو اصلی اکانت را ذخیره کن تا موقع خاموش کردن برگردد"""
+        try:
+            if self.current_bio is not None and str(self.current_bio).strip() != "":
+                return
+            if not self.client or not self.client.is_connected():
+                return
+            me = await self.client.get_me()
+            full = await self.client(GetFullUserRequest(me.id))
+            about = ""
+            try:
+                about = full.full_user.about or ""
+            except Exception:
+                about = getattr(full, 'about', None) or ""
+            # فقط اگر هیچ افزونه بیویی روشن نباشد، این را به‌عنوان بیو اصلی ذخیره کن
+            any_on = any(
+                self.get_bio_setting(n) == 'روشن'
+                for n in (
+                    'ساعت_در_بیو', 'ساعت_در_بیو_۲', 'بیو_تاریخ', 'بیو_کامل',
+                    'بیو_عاشقانه', 'بیو_ایموجی', 'بیو_فصل', 'بیو_روز_هفته',
+                    'بیو_شمارش_معکوس', 'بیو_متن_دلخواه'
+                )
+            )
+            if not any_on:
+                self.save_bio(about or "")
+        except Exception as e:
+            logger.debug(f"ensure_original_bio: {e}")
+
     async def update_bio_with_settings(self):
         try:
             if not self.client or not self.client.is_connected():
                 logger.warning(f"کلاینت برای کاربر {self.user_id} متصل نیست")
                 return
-            
+
+            await self.ensure_original_bio_saved()
             bio_text = self.current_bio or ""
-            
+
             time1 = self.get_bio_setting('ساعت_در_بیو') == 'روشن'
             time2 = self.get_bio_setting('ساعت_در_بیو_۲') == 'روشن'
             date = self.get_bio_setting('بیو_تاریخ') == 'روشن'
@@ -1927,9 +1960,20 @@ class SelfBotManager:
             weekday_bio = self.get_bio_setting('بیو_روز_هفته') == 'روشن'
             countdown = self.get_bio_setting('بیو_شمارش_معکوس') == 'روشن'
             custom_text = self.get_bio_setting('بیو_متن_دلخواه') == 'روشن'
-            
-            new_bio = ""
-            
+
+            any_on = any([time1, time2, date, full, love, random_emoji_bio, season, weekday_bio, countdown, custom_text])
+
+            if not any_on:
+                # همه خاموش → بیو اصلی یا خالی (حذف افزودنی‌ها از بیوگرافی)
+                new_bio = bio_text or ""
+                await self.client(UpdateProfileRequest(about=new_bio[:70] if new_bio else " "))
+                # یک فاصله اجباری سپس خالی برای اطمینان از پاک شدن در برخی کلاینت‌ها
+                if not new_bio:
+                    await asyncio.sleep(0.3)
+                    await self.client(UpdateProfileRequest(about=""))
+                logger.info(f"بیو پاک/بازیابی شد برای {self.user_id}")
+                return
+
             if full:
                 new_bio = f'{moon_or_sun()} | {bio_text} | {create_time2()} | {create_tarikh2()} | {get_weekday()} | {get_season()}'
             elif date:
@@ -1948,19 +1992,25 @@ class SelfBotManager:
                 new_bio = f'{get_weekday()} | {bio_text} | {create_time()}'
             elif countdown:
                 now = get_now()
-                target = datetime(now.year + 1, 3, 21)
-                diff = target - now
-                days = diff.days
+                try:
+                    target = datetime(now.year + 1, 3, 21)
+                    if getattr(now, 'tzinfo', None):
+                        target = target.replace(tzinfo=now.tzinfo)
+                    diff = target - now
+                    days = getattr(diff, 'days', 0)
+                except Exception:
+                    days = 0
                 new_bio = f'{bio_text} | ⏳ {days} روز تا سال نو'
             elif custom_text:
-                custom = self.get_bio_setting('بیو_متن_دلخواه_متن')
+                custom = self.get_bio_setting('بیو_متن_دلخواه_متن') or ""
                 new_bio = f'{custom} | {bio_text} | {create_time()}'
-            
-            if new_bio:
-                await self.client(UpdateProfileRequest(about=new_bio))
-                logger.info(f"بیو به‌روزرسانی شد: {new_bio[:50]}...")
+            else:
+                new_bio = bio_text or ""
+
+            await self.client(UpdateProfileRequest(about=(new_bio or "")[:70]))
+            logger.info(f"بیو به‌روزرسانی شد: {(new_bio or '(خالی)')[:50]}...")
         except Exception as e:
-            logger.error(f"خطا در به‌روزرسانی بیو: {e}")
+            logger.error(f"خطا در به‌روزرسانی بیو: {e}\n{traceback.format_exc()}")
     
     async def fortune_telling(self, chat_id, event=None):
         fortune = random.choice(fortunes)
@@ -2459,11 +2509,12 @@ class SelfBotManager:
                 if rest in ['روشن', 'خاموش']:
                     status = rest
                     self.set_bio_setting(setting_name, status)
-                    if status == 'روشن':
-                        await self.update_bio_with_settings()
-                        await event.edit(f"✅ {bio_cmd} **{status}** شد و بیو به‌روزرسانی شد")
-                    else:
-                        await event.edit(f"✅ {bio_cmd} **{status}** شد")
+                    # همیشه بیو را به‌روز کن (روشن یا خاموش)
+                    await self.update_bio_with_settings()
+                    try:
+                        await event.delete()
+                    except Exception:
+                        pass
                     return
         
         # ========== فال ==========
@@ -3996,6 +4047,79 @@ class SelfBotManager:
                     pass
             return
         
+        # ========== پنل کاربر (ریپلای) ==========
+        if cmd == 'پنل' and args and args[0] == 'کاربر':
+            if not event.message.is_reply:
+                await event.edit("⚠️ روی پیام کاربر ریپلای کنید و بنویسید: پنل کاربر")
+                return
+            try:
+                reply_msg = await event.get_reply_message()
+                target = await reply_msg.get_sender()
+                if not target:
+                    await event.edit("❌ کاربر یافت نشد")
+                    return
+                tid = int(target.id)
+                panel_lock_targets[self.user_id] = tid
+                name = getattr(target, 'first_name', '') or ''
+                if getattr(target, 'last_name', None):
+                    name += ' ' + target.last_name
+                uname = f"@{target.username}" if getattr(target, 'username', None) else "—"
+                is_enemy_pv = db.is_enemy(self.user_id, tid, 'pv')
+                is_enemy_g = db.is_enemy(self.user_id, tid, 'group')
+                is_pv_locked = db.is_pv_locked(self.user_id, tid)
+                locks = {}
+                for lt in ['lock_sticker', 'lock_photo', 'lock_video', 'lock_link', 'lock_voice', 'lock_text']:
+                    locks[lt] = db.get_user_lock(self.user_id, tid, lt)
+                text = (
+                    f"👤 پنل کاربر\n"
+                    f"━━━━━━━━━━━━━━\n"
+                    f"نام: {name}\n"
+                    f"آیدی: {tid}\n"
+                    f"یوزرنیم: {uname}\n"
+                    f"━━━━━━━━━━━━━━\n"
+                    f"دشمن پیوی: {'✅' if is_enemy_pv else '❌'}\n"
+                    f"دشمن گروه: {'✅' if is_enemy_g else '❌'}\n"
+                    f"قفل پیوی: {'✅' if is_pv_locked else '❌'}\n"
+                    f"قفل استیکر: {'✅' if locks.get('lock_sticker') else '❌'}\n"
+                    f"قفل عکس: {'✅' if locks.get('lock_photo') else '❌'}\n"
+                    f"قفل ویدیو: {'✅' if locks.get('lock_video') else '❌'}\n"
+                    f"قفل لینک: {'✅' if locks.get('lock_link') else '❌'}\n"
+                    f"\n✅ این کاربر به‌عنوان هدف قفل ذخیره شد.\n"
+                    f"از پنل ربات → قفل رسانه، قفل‌ها فقط برای همین کاربر اعمال می‌شوند.\n"
+                    f"\nدستورات سریع با ریپلای:\n"
+                    f"• دشمن / دوست\n"
+                    f"• دشمن گروه / دوست گروه\n"
+                    f"• قفل استیکر روشن/خاموش\n"
+                    f"• قفل پیوی"
+                )
+                try:
+                    photos = await self.client.get_profile_photos(target, limit=1)
+                    if photos:
+                        await event.delete()
+                        await self.client.send_file(chat_id, photos[0], caption=text)
+                    else:
+                        await event.edit(text)
+                except Exception:
+                    await event.edit(text)
+                # ارسال پنل دکمه‌دار به پیوی با ربات
+                try:
+                    kb_dict = {
+                        'inline_keyboard': [
+                            [{'text': b.text, 'callback_data': b.callback_data} for b in row]
+                            for row in get_user_manage_keyboard(self.user_id, tid).inline_keyboard
+                        ]
+                    }
+                    requests.post(
+                        f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+                        json={'chat_id': self.user_id, 'text': f"👤 مدیریت {name}\nID: {tid}", 'reply_markup': kb_dict},
+                        timeout=12
+                    )
+                except Exception as e:
+                    logger.debug(f"پنل کاربر bot kb: {e}")
+            except Exception as e:
+                await event.edit(f"❌ خطا: {str(e)[:80]}")
+            return
+        
         if cmd == 'امار' and args and args[0] == 'گپ' and len(args) == 1:
             await event.delete()
             target_user_id = None
@@ -5312,82 +5436,83 @@ async def inline_panel(update:Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def render_panel_image(username: str, avatar_path: str = None) -> str:
-    """هدر پنل: تصویر اصلی VROOM + آواتار کاربر در دایره مرکز + نام کاربر به‌جای VROOM پایین"""
+    """هدر پنل: تصویر کامل طراحی‌شده VROOM + آواتار در دایره + نام کاربر به‌جای VROOM پایین"""
     try:
         from PIL import Image, ImageDraw, ImageFont, ImageOps
         base_candidates = [
-            "panel_header_base.png",
             PANEL_HEADER_IMAGE,
             "panel_header.png",
-            "/app/panel_header_base.png",
+            "panel_header_base.png",
             "/app/panel_header.png",
+            "/app/panel_header_base.png",
             os.path.join("media_storage", "panel_header.png"),
             os.path.join("media_storage", "panel_header_base.png"),
-            os.path.join(os.path.dirname(__file__) if '__file__' in dir() else '.', "panel_header.png"),
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "panel_header.png"),
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "panel_header_base.png"),
         ]
         base_path = None
         for p in base_candidates:
-            if p and os.path.exists(p):
-                base_path = p
-                break
-        if base_path:
-            img = Image.open(base_path).convert('RGBA')
-        else:
-            img = Image.new('RGBA', (1344, 784), (8, 10, 14, 255))
+            try:
+                if p and os.path.exists(p) and os.path.getsize(p) > 1000:
+                    base_path = p
+                    break
+            except Exception:
+                continue
+        if not base_path:
+            logger.error("هیچ تصویر پنل یافت نشد!")
+            return None
+        img = Image.open(base_path).convert('RGBA')
         draw = ImageDraw.Draw(img)
         W, H = img.size
         try:
-            font_name = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", max(42, W // 22))
+            font_name = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", max(40, W // 24))
         except Exception:
             try:
-                font_name = ImageFont.truetype("/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf", max(42, W // 22))
+                font_name = ImageFont.truetype("/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf", max(40, W // 24))
             except Exception:
                 font_name = ImageFont.load_default()
         safe_name = (username or "User")[:28]
         for ch in ('_', '*', '`', '[', ']'):
             safe_name = safe_name.replace(ch, ' ')
-        # آواتار در دایره مرکزی طرح (دایره پورتال)
+        # آواتار داخل دایره پورتال مرکزی
         if avatar_path and os.path.exists(avatar_path):
             try:
                 avatar = Image.open(avatar_path).convert('RGBA')
-                # اندازه مناسب برای دایره مرکزی تصویر جدید
-                size = int(min(W, H) * 0.22)
+                size = int(min(W, H) * 0.20)
                 avatar = ImageOps.fit(avatar, (size, size), centering=(0.5, 0.5))
                 mask = Image.new('L', (size, size), 0)
                 ImageDraw.Draw(mask).ellipse((0, 0, size - 1, size - 1), fill=255)
                 avatar.putalpha(mask)
-                # موقعیت مرکز دایره در تصویر جدید (تقریباً مرکز افقی، کمی بالاتر از وسط عمودی)
                 pos_x = (W - size) // 2
-                pos_y = int(H * 0.32) - size // 2
+                pos_y = int(H * 0.30) - size // 2
                 img.paste(avatar, (pos_x, pos_y), avatar)
             except Exception as e:
                 logger.debug(f"avatar overlay: {e}")
-        # پوشش نوار پایین (جای VROOM) با نام کاربر
-        bar_h = int(H * 0.115)
-        # ناحیه بنر پایین تصویر را کمی تیره می‌کنیم تا متن خوانا باشد
-        overlay = Image.new('RGBA', (W, bar_h), (4, 6, 12, 210))
+        # پوشش فقط ناحیه بنر VROOM پایین با نام کاربر (طراحی کامل حفظ می‌شود)
+        bar_h = int(H * 0.11)
+        overlay = Image.new('RGBA', (W, bar_h), (5, 8, 14, 200))
         img.paste(overlay, (0, H - bar_h), overlay)
         try:
             bbox = draw.textbbox((0, 0), safe_name, font=font_name)
             tw = bbox[2] - bbox[0]
             th = bbox[3] - bbox[1]
         except Exception:
-            tw = len(safe_name) * 22
-            th = 40
+            tw = len(safe_name) * 20
+            th = 36
         draw = ImageDraw.Draw(img)
-        text_x = (W - tw) // 2
-        text_y = H - bar_h + (bar_h - th) // 2 - 2
-        # سایه ملایم برای خوانایی
-        draw.text((text_x + 2, text_y + 2), safe_name, font=font_name, fill=(0, 20, 40, 180))
-        draw.text((text_x, text_y), safe_name, font=font_name, fill=(180, 230, 255, 255))
-        out = os.path.join(MEDIA_FOLDER, f"panel_{abs(hash(safe_name + str(avatar_path))) % 10**9}.png")
+        text_x = max(0, (W - tw) // 2)
+        text_y = H - bar_h + max(0, (bar_h - th) // 2 - 2)
+        draw.text((text_x + 2, text_y + 2), safe_name, font=font_name, fill=(0, 15, 35, 160))
+        draw.text((text_x, text_y), safe_name, font=font_name, fill=(160, 220, 255, 255))
+        out = os.path.join(MEDIA_FOLDER, f"panel_{abs(hash(safe_name + str(avatar_path or ''))) % 10**9}.png")
         os.makedirs(MEDIA_FOLDER, exist_ok=True)
         img.convert('RGB').save(out, 'PNG', quality=95)
         return out
     except Exception as e:
-        logger.error(f"render_panel_image: {e}")
-        if os.path.exists(PANEL_HEADER_IMAGE):
-            return PANEL_HEADER_IMAGE
+        logger.error(f"render_panel_image: {e}\n{traceback.format_exc()}")
+        for p in [PANEL_HEADER_IMAGE, "panel_header.png", "panel_header_base.png"]:
+            if os.path.exists(p):
+                return p
         return None
 
 
@@ -5449,13 +5574,12 @@ def get_help_back_keyboard(user_id, back_callback):
     ])
 
 async def safe_edit_panel(query, text, reply_markup=None, parse_mode=None):
-    """ویرایش پیام پنل — هم متن هم کپشن عکس"""
+    """ویرایش پیام پنل — هم متن هم کپشن عکس؛ در نهایت فقط کیبورد را هم امتحان می‌کند"""
     kwargs = {}
     if reply_markup is not None:
         kwargs['reply_markup'] = reply_markup
     if parse_mode:
         kwargs['parse_mode'] = parse_mode
-    # اگر پیام عکس دارد، caption را ویرایش کن
     has_photo = False
     try:
         has_photo = bool(query.message and query.message.photo)
@@ -5463,10 +5587,17 @@ async def safe_edit_panel(query, text, reply_markup=None, parse_mode=None):
         pass
     if has_photo:
         try:
-            await query.edit_message_caption(caption=text, **kwargs)
+            await query.edit_message_caption(caption=text or query.message.caption or " ", **kwargs)
             return True
         except Exception as e:
+            # اگر فقط کیبورد عوض شده، همین کافی است
             logger.debug(f"edit_caption: {e}")
+            if reply_markup is not None:
+                try:
+                    await query.edit_message_reply_markup(reply_markup=reply_markup)
+                    return True
+                except Exception as e2:
+                    logger.debug(f"edit_markup after caption fail: {e2}")
     try:
         await query.edit_message_text(text, **kwargs)
         return True
@@ -5481,7 +5612,13 @@ async def safe_edit_panel(query, text, reply_markup=None, parse_mode=None):
 
 async def refresh_panel_keyboard(query, user_id, menu_text, keyboard_func):
     """به‌روزرسانی فوری کیبورد پنل با تیک‌های جدید"""
-    await safe_edit_panel(query, menu_text, reply_markup=keyboard_func(user_id))
+    kb = keyboard_func(user_id)
+    ok = await safe_edit_panel(query, menu_text, reply_markup=kb)
+    if not ok and kb is not None:
+        try:
+            await query.edit_message_reply_markup(reply_markup=kb)
+        except Exception:
+            pass
 
 def get_main_panel_keyboard(user_id):
     keyboard = [
@@ -5581,11 +5718,14 @@ def get_time_menu_keyboard(user_id):
 def get_font_menu_keyboard(user_id):
     settings = db.get_selfbot_settings(user_id)
     selected = settings.get('time_font_indices', 'all')
-    if selected == 'all':
+    if selected == 'all' or selected is None:
         selected_set = set()
         all_selected = True
     else:
-        selected_set = set(selected) if isinstance(selected, list) else set()
+        try:
+            selected_set = set(int(x) for x in (selected if isinstance(selected, list) else []))
+        except Exception:
+            selected_set = set()
         all_selected = False
     keyboard = []
     # All fonts button
@@ -5641,41 +5781,36 @@ def get_flag_menu_keyboard(user_id):
     return InlineKeyboardMarkup(keyboard)
 
 def get_bio_menu_keyboard(user_id):
-    bio_time1 = db.get_bio_setting(user_id, 'ساعت_در_بیو')
-    bio_time2 = db.get_bio_setting(user_id, 'ساعت_در_بیو_۲')
-    bio_date = db.get_bio_setting(user_id, 'بیو_تاریخ')
-    bio_full = db.get_bio_setting(user_id, 'بیو_کامل')
-    bio_love = db.get_bio_setting(user_id, 'بیو_عاشقانه')
-    bio_emoji = db.get_bio_setting(user_id, 'بیو_ایموجی')
-    bio_season = db.get_bio_setting(user_id, 'بیو_فصل')
-    bio_weekday = db.get_bio_setting(user_id, 'بیو_روز_هفته')
-    bio_countdown = db.get_bio_setting(user_id, 'بیو_شمارش_معکوس')
-    bio_custom = db.get_bio_setting(user_id, 'بیو_متن_دلخواه')
-    
+    def _on(name):
+        return db.get_bio_setting(user_id, name) == 'روشن'
+    def _btn(label, key, on):
+        return InlineKeyboardButton(
+            f"{'✓ ' if on else ''}{label}",
+            callback_data=f"exec_{key}_{user_id}",
+            style="success" if on else "primary"
+        )
     keyboard = [
         [
-            InlineKeyboardButton(f"🕐 ساعت در بیو {'' if bio_time1 != 'روشن' else '✓'}", callback_data=f"exec_bio_time1_{user_id}", style="success" if bio_time1 != 'روشن' else "primary"),
-            InlineKeyboardButton(f"🕐 ساعت در بیو ۲ {'' if bio_time2 != 'روشن' else '✓'}", callback_data=f"exec_bio_time2_{user_id}", style="success" if bio_time2 != 'روشن' else "primary")
+            _btn("🕐 ساعت در بیو", "bio_time1", _on('ساعت_در_بیو')),
+            _btn("🕐 ساعت در بیو ۲", "bio_time2", _on('ساعت_در_بیو_۲')),
         ],
         [
-            InlineKeyboardButton(f"📅 بیو تاریخ {'' if bio_date != 'روشن' else '✓'}", callback_data=f"exec_bio_date_{user_id}", style="success" if bio_date != 'روشن' else "primary"),
-            InlineKeyboardButton(f"📅 بیو کامل {'' if bio_full != 'روشن' else '✓'}", callback_data=f"exec_bio_full_{user_id}", style="success" if bio_full != 'روشن' else "primary")
+            _btn("📅 بیو تاریخ", "bio_date", _on('بیو_تاریخ')),
+            _btn("📅 بیو کامل", "bio_full", _on('بیو_کامل')),
         ],
         [
-            InlineKeyboardButton(f"💕 بیو عاشقانه {'' if bio_love != 'روشن' else '✓'}", callback_data=f"exec_bio_love_{user_id}", style="success" if bio_love != 'روشن' else "primary"),
-            InlineKeyboardButton(f"🎨 بیو ایموجی {'' if bio_emoji != 'روشن' else '✓'}", callback_data=f"exec_bio_emoji_{user_id}", style="success" if bio_emoji != 'روشن' else "primary")
+            _btn("💕 بیو عاشقانه", "bio_love", _on('بیو_عاشقانه')),
+            _btn("🎨 بیو ایموجی", "bio_emoji", _on('بیو_ایموجی')),
         ],
         [
-            InlineKeyboardButton(f"🌸 بیو فصل {'' if bio_season != 'روشن' else '✓'}", callback_data=f"exec_bio_season_{user_id}", style="success" if bio_season != 'روشن' else "primary"),
-            InlineKeyboardButton(f"📆 بیو روز هفته {'' if bio_weekday != 'روشن' else '✓'}", callback_data=f"exec_bio_weekday_{user_id}", style="success" if bio_weekday != 'روشن' else "primary")
+            _btn("🌸 بیو فصل", "bio_season", _on('بیو_فصل')),
+            _btn("📆 بیو روز هفته", "bio_weekday", _on('بیو_روز_هفته')),
         ],
         [
-            InlineKeyboardButton(f"⏳ بیو شمارش معکوس {'' if bio_countdown != 'روشن' else '✓'}", callback_data=f"exec_bio_countdown_{user_id}", style="success" if bio_countdown != 'روشن' else "primary"),
-            InlineKeyboardButton(f"✏️ بیو متن دلخواه {'' if bio_custom != 'روشن' else '✓'}", callback_data=f"exec_bio_custom_{user_id}", style="success" if bio_custom != 'روشن' else "primary")
+            _btn("⏳ شمارش معکوس", "bio_countdown", _on('بیو_شمارش_معکوس')),
+            _btn("✏️ متن دلخواه", "bio_custom", _on('بیو_متن_دلخواه')),
         ],
-        [
-            InlineKeyboardButton("⚈ بازگشت", callback_data=f"time_menu_{user_id}", style="danger")
-        ]
+        [InlineKeyboardButton("⚈ بازگشت", callback_data=f"time_menu_{user_id}", style="danger")]
     ]
     return InlineKeyboardMarkup(keyboard)
 
@@ -5889,36 +6024,101 @@ def get_user_menu_keyboard(user_id):
     ]
     return InlineKeyboardMarkup(keyboard)
 
-def get_lock_menu_keyboard(user_id):
+# target_id برای قفل رسانه از پنل کاربر (user_id -> target_id)
+panel_lock_targets = {}
+
+def get_lock_menu_keyboard(user_id, target_id=None):
+    if target_id is None:
+        target_id = panel_lock_targets.get(user_id, 0)
+    def _lk(lock_type, label):
+        on = db.get_user_lock(user_id, target_id, lock_type)
+        return InlineKeyboardButton(
+            f"{'✓ ' if on else ''}{label}",
+            callback_data=f"exec_{lock_type}_{user_id}",
+            style="success" if on else "danger"
+        )
     keyboard = [
         [
-            InlineKeyboardButton("🔗 قفل لینک", callback_data=f"exec_lock_link_{user_id}", style="danger"),
-            InlineKeyboardButton("📸 قفل عکس", callback_data=f"exec_lock_photo_{user_id}", style="danger"),
-            InlineKeyboardButton("🎥 قفل ویدیو", callback_data=f"exec_lock_video_{user_id}", style="danger")
+            _lk("lock_link", "🔗 لینک"),
+            _lk("lock_photo", "📸 عکس"),
+            _lk("lock_video", "🎥 ویدیو"),
         ],
         [
-            InlineKeyboardButton("🎨 قفل استیکر", callback_data=f"exec_lock_sticker_{user_id}", style="danger"),
-            InlineKeyboardButton("🎞️ قفل گیف", callback_data=f"exec_lock_gif_{user_id}", style="danger"),
-            InlineKeyboardButton("🎤 قفل ویس", callback_data=f"exec_lock_voice_{user_id}", style="danger")
+            _lk("lock_sticker", "🎨 استیکر"),
+            _lk("lock_gif", "🎞️ گیف"),
+            _lk("lock_voice", "🎤 ویس"),
         ],
         [
-            InlineKeyboardButton("📁 قفل فایل", callback_data=f"exec_lock_file_{user_id}", style="danger"),
-            InlineKeyboardButton("🎵 قفل موزیک", callback_data=f"exec_lock_music_{user_id}", style="danger"),
-            InlineKeyboardButton("📹 قفل ویدیو نوت", callback_data=f"exec_lock_video_note_{user_id}", style="danger")
+            _lk("lock_file", "📁 فایل"),
+            _lk("lock_music", "🎵 موزیک"),
+            _lk("lock_video_note", "📹 ویدیو نوت"),
         ],
         [
-            InlineKeyboardButton("📞 قفل کانتکت", callback_data=f"exec_lock_contact_{user_id}", style="danger"),
-            InlineKeyboardButton("📍 قفل لوکیشن", callback_data=f"exec_lock_location_{user_id}", style="danger"),
-            InlineKeyboardButton("😀 قفل ایموجی", callback_data=f"exec_lock_emoji_{user_id}", style="danger")
+            _lk("lock_contact", "📞 کانتکت"),
+            _lk("lock_location", "📍 لوکیشن"),
+            _lk("lock_emoji", "😀 ایموجی"),
         ],
         [
-            InlineKeyboardButton("📝 قفل متن", callback_data=f"exec_lock_text_{user_id}", style="danger")
+            _lk("lock_text", "📝 متن")
         ],
         [
             InlineKeyboardButton("📖 راهنمای کامل قفل رسانه", callback_data=f"exec_lock_help_{user_id}", style="primary")
         ],
         [
             InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main", style="danger")
+        ]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_user_manage_keyboard(owner_id, target_id):
+    """پنل مدیریت یک کاربر خاص (قفل/دشمن/پیوی) با تیک وضعیت"""
+    is_enemy_pv = db.is_enemy(owner_id, target_id, 'pv')
+    is_enemy_g = db.is_enemy(owner_id, target_id, 'group')
+    is_locked_pv = db.is_pv_locked(owner_id, target_id)
+    def _lk(lt, label):
+        on = db.get_user_lock(owner_id, target_id, lt)
+        return InlineKeyboardButton(
+            f"{'✓ ' if on else ''}{label}",
+            callback_data=f"um_{lt}_{target_id}_{owner_id}",
+            style="success" if on else "danger"
+        )
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                f"{'✓ ' if is_enemy_pv else ''}🥷 دشمن پیوی",
+                callback_data=f"um_enemy_pv_{target_id}_{owner_id}",
+                style="success" if is_enemy_pv else "danger"
+            ),
+            InlineKeyboardButton(
+                f"{'✓ ' if is_enemy_g else ''}👥 دشمن گروه",
+                callback_data=f"um_enemy_g_{target_id}_{owner_id}",
+                style="success" if is_enemy_g else "danger"
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                f"{'✓ ' if is_locked_pv else ''}🔒 قفل پیوی",
+                callback_data=f"um_lockpv_{target_id}_{owner_id}",
+                style="success" if is_locked_pv else "danger"
+            ),
+        ],
+        [
+            _lk("lock_sticker", "🎨 استیکر"),
+            _lk("lock_photo", "📸 عکس"),
+            _lk("lock_video", "🎥 ویدیو"),
+        ],
+        [
+            _lk("lock_link", "🔗 لینک"),
+            _lk("lock_voice", "🎤 ویس"),
+            _lk("lock_text", "📝 متن"),
+        ],
+        [
+            _lk("lock_gif", "🎞️ گیف"),
+            _lk("lock_file", "📁 فایل"),
+            _lk("lock_music", "🎵 موزیک"),
+        ],
+        [
+            InlineKeyboardButton("✖️ بستن", callback_data=f"um_close_{target_id}_{owner_id}", style="danger")
         ]
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -6292,7 +6492,7 @@ async def _button_callback_impl(update: Update, context: ContextTypes.DEFAULT_TY
     data = query.data
     user_id = query.from_user.id
     user_id_str = str(user_id)
-    if '_' in data and not data.startswith(('admin_', 'approve_', 'reject_', 'stop_selfbot_', 'restart_selfbot_', 'desc_', 'menu_')):
+    if '_' in data and not data.startswith(('admin_', 'approve_', 'reject_', 'stop_selfbot_', 'restart_selfbot_', 'desc_', 'menu_', 'code_')):
         parts = data.split('_')
         for part in parts:
             if part.isdigit() and len(part) >= 5:
@@ -6307,6 +6507,92 @@ async def _button_callback_impl(update: Update, context: ContextTypes.DEFAULT_TY
         except:
             await query.edit_message_text("✅ پنل بسته شد")
         return
+    
+    # ========== ورود کد تأیید با دکمه‌های فارسی ==========
+    if data.startswith("code_digit_") or data.startswith("code_del_") or data.startswith("code_ok_") or data.startswith("code_back_"):
+        await query.answer()
+        parts = data.split('_')
+        action = parts[1]  # digit / del / ok / back
+        user_data = db.get_user(user_id_str)
+        if not user_data or user_data.get('step') != 'get_code':
+            await query.answer("⚠️ مرحله ورود کد فعال نیست", show_alert=True)
+            return
+        current_code = user_data.get('code') or ''
+        if action == 'digit':
+            digit = parts[2]
+            if len(current_code) >= 5:
+                await query.answer("کد کامل است — تأیید را بزنید", show_alert=False)
+                return
+            current_code = current_code + digit
+            db.update_user(user_id_str, code=current_code)
+            display = current_code if len(current_code) >= 5 else (current_code + '•' * (5 - len(current_code)))
+            try:
+                await query.edit_message_text(
+                    f"✅ کد تأیید ارسال شد!\n\n📩 کد ۵ رقمی را با دکمه‌های زیر وارد کنید:\n\nکد: `{display}`",
+                    reply_markup=query.message.reply_markup,
+                    parse_mode='Markdown'
+                )
+            except Exception:
+                pass
+            return
+        if action == 'del':
+            current_code = current_code[:-1] if current_code else ''
+            db.update_user(user_id_str, code=current_code)
+            display = '(خالی)' if not current_code else (current_code + '•' * (5 - len(current_code)))
+            try:
+                await query.edit_message_text(
+                    f"✅ کد تأیید ارسال شد!\n\n📩 کد ۵ رقمی را با دکمه‌های زیر وارد کنید:\n\nکد: `{display}`",
+                    reply_markup=query.message.reply_markup,
+                    parse_mode='Markdown'
+                )
+            except Exception:
+                pass
+            return
+        if action == 'back':
+            db.update_user(user_id_str, step='get_phone', phone=None, code=None, phone_code_hash=None)
+            await query.edit_message_text("🔙 بازگشت\n\nشماره تلفن خود را دوباره وارد کنید:\nمثال: +989123456789")
+            return
+        if action == 'ok':
+            if len(current_code) < 5:
+                await query.answer("کد باید ۵ رقم باشد", show_alert=True)
+                return
+            await query.edit_message_text("⏳ در حال تأیید کد...")
+            try:
+                session_name = f"user_{user_id_str}"
+                session_path = os.path.join(SESSIONS_FOLDER, f"{session_name}.session")
+                user_api = get_user_api(user_id_str)
+                if not user_api:
+                    await query.edit_message_text("❌ خطا در دریافت API")
+                    return
+                API_ID = user_api["api_id"]
+                API_HASH = user_api["api_hash"]
+                client = TelegramClient(session_path, API_ID, API_HASH)
+                await client.connect()
+                user_data = db.get_user(user_id_str)
+                await client.sign_in(phone=user_data['phone'], code=current_code, phone_code_hash=user_data['phone_code_hash'])
+                expiration_date = (datetime.now() + timedelta(days=30)).strftime('%Y-%m-%d')
+                db.update_user(user_id_str, self_active=1, session_file=session_path, expiration_date=expiration_date, step=None)
+                await client.disconnect()
+                manager = SelfBotManager(user_id_str)
+                if await manager.start(session_path):
+                    selfbot_managers[user_id_str] = manager
+                await query.edit_message_text("✅ سلف شما فعال شد")
+                try:
+                    await context.bot.send_message(
+                        chat_id=ADMIN_ID,
+                        text=f"✅ کاربر {user_data.get('full_name')} وارد شد\n🆔 {user_id_str}\n📞 {user_data.get('phone')}"
+                    )
+                except Exception:
+                    pass
+            except SessionPasswordNeededError:
+                db.update_user(user_id_str, step='get_password')
+                await query.edit_message_text("🔐 رمز دو مرحله‌ای را وارد کنید:")
+            except Exception as e:
+                logger.error(f"کد تأیید: {e}")
+                await query.edit_message_text("✖ کد نامعتبر است\nدوباره شماره را وارد کنید")
+                db.update_user(user_id_str, step='get_phone', phone=None, code=None, phone_code_hash=None)
+            return
+    
     if data == "back_main":
         name = get_main_panel_text(query.from_user)
         try:
@@ -6374,6 +6660,57 @@ async def _button_callback_impl(update: Update, context: ContextTypes.DEFAULT_TY
     if data.startswith("membership_status_"):
         await membership_status_handler(update, context)
         return
+    # ========== پنل مدیریت کاربر (um_) ==========
+    if data.startswith("um_"):
+        await query.answer()
+        try:
+            parts = data.split('_')
+            # um_lock_sticker_TARGET_OWNER  or um_enemy_pv_TARGET_OWNER or um_lockpv_TARGET_OWNER
+            owner_id = int(parts[-1])
+            if user_id != owner_id and user_id != ADMIN_ID:
+                await query.answer("⛔ این پنل مال شما نیست", show_alert=True)
+                return
+            target_id = int(parts[-2])
+            action = '_'.join(parts[1:-2])  # lock_sticker / enemy_pv / lockpv / close
+            panel_lock_targets[owner_id] = target_id
+            if action == 'close':
+                try:
+                    await query.message.delete()
+                except Exception:
+                    pass
+                return
+            if action == 'enemy_pv':
+                if db.is_enemy(owner_id, target_id, 'pv'):
+                    db.remove_enemy(owner_id, target_id, 'pv')
+                else:
+                    db.add_enemy(owner_id, target_id, 'pv')
+            elif action == 'enemy_g':
+                if db.is_enemy(owner_id, target_id, 'group'):
+                    db.remove_enemy(owner_id, target_id, 'group')
+                else:
+                    db.add_enemy(owner_id, target_id, 'group')
+            elif action == 'lockpv':
+                if db.is_pv_locked(owner_id, target_id):
+                    db.remove_locked_pv(owner_id, target_id)
+                else:
+                    db.add_locked_pv(owner_id, target_id)
+            elif action.startswith('lock_'):
+                cur = db.get_user_lock(owner_id, target_id, action)
+                db.set_user_lock(owner_id, target_id, action, not cur)
+            try:
+                await query.edit_message_reply_markup(reply_markup=get_user_manage_keyboard(owner_id, target_id))
+            except Exception:
+                try:
+                    await query.edit_message_text(
+                        query.message.text or query.message.caption or "👤 مدیریت کاربر",
+                        reply_markup=get_user_manage_keyboard(owner_id, target_id)
+                    )
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.error(f"um_ handler: {e}")
+        return
+
     if data.startswith("exec_"):
         await exec_command_handler(update, context)
         return
@@ -6468,9 +6805,35 @@ async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             pass
         return
     manager = selfbot_managers[user_id_str]
-    cmd = data.replace(f'exec_', '').replace(f'_{user_id}', '')
+    # پارس امن cmd بدون خراب شدن ایندکس فونت/پرچم وقتی user_id در رشته باشد
+    _raw = data[5:] if data.startswith('exec_') else data  # بعد از exec_
+    if _raw.endswith(f'_{user_id}'):
+        cmd = _raw[: -(len(str(user_id)) + 1)]
+    else:
+        cmd = _raw.replace(f'_{user_id}', '')
     
-    msg = await context.bot.send_message(chat_id=chat_id, text=f"⏳ در حال اجرا...")
+    # پیام موقت «در حال اجرا» فقط برای دستوراتی که واقعاً نیاز دارند (نه toggle)
+    msg = None
+    _silent_prefixes = (
+        'bio_', 'time_on', 'time_off', 'time_flag', 'font_', 'flag_',
+        'lock_', 'filter_', 'ai_', 'autosend_', 'self_on', 'self_off',
+        'monshi_on', 'monshi_off', 'spam_protection_', 'bold', 'underline',
+        'strike', 'quote', 'spoiler', 'italic', 'code', 'pre',
+        'translate_', 'style_'
+    )
+    _needs_temp_msg = not any(cmd.startswith(p) or cmd == p.rstrip('_') for p in _silent_prefixes)
+    if _needs_temp_msg:
+        try:
+            msg = await context.bot.send_message(chat_id=chat_id, text="⏳")
+        except Exception:
+            msg = None
+    
+    async def _silent_done():
+        if msg:
+            try:
+                await msg.delete()
+            except Exception:
+                pass
     
     bio_commands = {
         'bio_time1': 'ساعت_در_بیو',
@@ -6485,17 +6848,24 @@ async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         'bio_custom': 'بیو_متن_دلخواه',
     }
     for cmd_key, setting_name in bio_commands.items():
-        if cmd.startswith(cmd_key):
+        if cmd == cmd_key or cmd.startswith(cmd_key + '_'):
             current = manager.get_bio_setting(setting_name)
             new_status = 'خاموش' if current == 'روشن' else 'روشن'
-            manager.set_bio_setting(setting_name, new_status)
+            # فقط یکی روشن بماند (اختیاری ولی تمیزتر)
             if new_status == 'روشن':
-                await manager.update_bio_with_settings()
-            await msg.edit_text(f"✅ {setting_name}: **{new_status}**")
+                for other_key, other_name in bio_commands.items():
+                    if other_name != setting_name:
+                        manager.set_bio_setting(other_name, 'خاموش')
+            manager.set_bio_setting(setting_name, new_status)
             try:
-                await refresh_panel_keyboard(query, user_id, "📝 تنظیمات بیو — به‌روز شد", get_bio_menu_keyboard)
+                await manager.update_bio_with_settings()
+            except Exception as e:
+                logger.error(f"bio update: {e}")
+            await _silent_done()
+            try:
+                await refresh_panel_keyboard(query, user_id, "📝 تنظیمات بیو", get_bio_menu_keyboard)
             except Exception as _panel_refresh_err:
-                print(f"⚠️ [DEBUG پنل] رفرش دکمه‌های پنل قدیمی fail شد (احتمالاً پیام قدیمی/غیرقابل‌دسترسه، مشکلی نیست چون خود عملیات انجام شده): {type(_panel_refresh_err).__name__}: {_panel_refresh_err}")
+                print(f"⚠️ [DEBUG پنل] رفرش: {type(_panel_refresh_err).__name__}: {_panel_refresh_err}")
             return
     
     if cmd == 'fortune_general':
@@ -6511,20 +6881,26 @@ async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     if cmd == 'monshi_on':
         db.set_monshi_status(user_id, True, manager.monshi_answer or "سلام! چطور می‌توانم کمک کنم؟")
         manager.monshi_mode = True
-        await msg.edit_text("✅ منشی فعال شد")
         try:
-            await refresh_panel_keyboard(query, user_id, "🗣 منشی — به‌روز شد", get_monshi_menu_keyboard)
-        except Exception as _panel_refresh_err:
-            print(f"⚠️ [DEBUG پنل] رفرش دکمه‌های پنل قدیمی fail شد (احتمالاً پیام قدیمی/غیرقابل‌دسترسه، مشکلی نیست چون خود عملیات انجام شده): {type(_panel_refresh_err).__name__}: {_panel_refresh_err}")
+            if msg: await msg.delete()
+        except Exception:
+            pass
+        try:
+            await refresh_panel_keyboard(query, user_id, "🗣 منشی", get_monshi_menu_keyboard)
+        except Exception:
+            pass
         return
     if cmd == 'monshi_off':
         db.set_monshi_status(user_id, False)
         manager.monshi_mode = False
-        await msg.edit_text("✅ منشی غیرفعال شد")
         try:
-            await refresh_panel_keyboard(query, user_id, "🗣 منشی — به‌روز شد", get_monshi_menu_keyboard)
-        except Exception as _panel_refresh_err:
-            print(f"⚠️ [DEBUG پنل] رفرش دکمه‌های پنل قدیمی fail شد (احتمالاً پیام قدیمی/غیرقابل‌دسترسه، مشکلی نیست چون خود عملیات انجام شده): {type(_panel_refresh_err).__name__}: {_panel_refresh_err}")
+            if msg: await msg.delete()
+        except Exception:
+            pass
+        try:
+            await refresh_panel_keyboard(query, user_id, "🗣 منشی", get_monshi_menu_keyboard)
+        except Exception:
+            pass
         return
     if cmd == 'add_answer':
         await msg.edit_text("📝 لطفاً پیام را به فرمت زیر ارسال کنید:\n\nافزودن پاسخ سوال:جواب")
@@ -6796,69 +7172,95 @@ async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     
     if cmd == 'self_on':
         db.update_selfbot_setting(user_id, 'selfbot_enabled', 1)
-        await msg.edit_text("✅ سلف‌بات فعال شد")
+        try:
+            if msg: await msg.delete()
+        except Exception:
+            pass
+        try:
+            await refresh_panel_keyboard(query, user_id, "🛠 ابزارها", get_tools_menu_keyboard)
+        except Exception:
+            pass
         return
     
     if cmd == 'self_off':
         db.update_selfbot_setting(user_id, 'selfbot_enabled', 0)
-        await msg.edit_text("✅ سلف‌بات غیرفعال شد")
+        try:
+            if msg: await msg.delete()
+        except Exception:
+            pass
+        try:
+            await refresh_panel_keyboard(query, user_id, "🛠 ابزارها", get_tools_menu_keyboard)
+        except Exception:
+            pass
         return
     
     if cmd.startswith('time_on'):
         db.update_selfbot_setting(user_id, 'time_enabled', 1)
         db.update_selfbot_setting(user_id, 'flag_enabled', 0)
         await manager.update_profile_name()
-        await msg.edit_text("✅ تایم روشن شد")
-        await refresh_panel_keyboard(query, user_id, "⚫️ زمان و پروفایل — وضعیت به‌روز شد", get_time_menu_keyboard)
+        try:
+            await msg.delete()
+        except Exception:
+            pass
+        await refresh_panel_keyboard(query, user_id, "⚫️ زمان و پروفایل", get_time_menu_keyboard)
         return
     if cmd.startswith('time_flag'):
         db.update_selfbot_setting(user_id, 'time_enabled', 1)
         db.update_selfbot_setting(user_id, 'flag_enabled', 1)
         await manager.update_profile_name()
-        await msg.edit_text("✅ تایمر پرچم روشن شد")
-        await refresh_panel_keyboard(query, user_id, "⚫️ زمان و پروفایل — وضعیت به‌روز شد", get_time_menu_keyboard)
+        try:
+            await msg.delete()
+        except Exception:
+            pass
+        await refresh_panel_keyboard(query, user_id, "⚫️ زمان و پروفایل", get_time_menu_keyboard)
         return
     if cmd.startswith('time_off'):
         db.update_selfbot_setting(user_id, 'time_enabled', 0)
         db.update_selfbot_setting(user_id, 'flag_enabled', 0)
         await manager.restore_profile_name()
-        await msg.edit_text("✅ تایم خاموش شد")
-        await refresh_panel_keyboard(query, user_id, "⚫️ زمان و پروفایل — وضعیت به‌روز شد", get_time_menu_keyboard)
+        try:
+            await msg.delete()
+        except Exception:
+            pass
+        await refresh_panel_keyboard(query, user_id, "⚫️ زمان و پروفایل", get_time_menu_keyboard)
         return
     
     # ========== فونت تایم ==========
+    async def _refresh_font_kb():
+        kb = get_font_menu_keyboard(user_id)
+        try:
+            await query.edit_message_reply_markup(reply_markup=kb)
+            return
+        except Exception:
+            pass
+        try:
+            await safe_edit_panel(query, "› انتخاب فونت تایم", reply_markup=kb)
+        except Exception as e:
+            print(f"refresh font: {e}")
+
     if cmd == 'font_all':
         db.update_selfbot_setting(user_id, 'time_font_indices', 'all')
         if user_id_str in selfbot_managers:
             selfbot_managers[user_id_str].time_font_indices = 'all'
-        await msg.edit_text("✅ همه فونت‌ها فعال شد (چرخش خودکار)")
-        try:
-            await query.message.edit_text("› انتخاب فونت تایم\n\nفونت‌های انتخاب‌شده به ترتیب در پروفایل چرخش می‌کنند.\nروی هر فونت بزنید تا تیک بخورد (چندتایی هم می‌شود).\n«همه فونت‌ها» یعنی چرخش خودکار روی همه.", reply_markup=get_font_menu_keyboard(user_id))
-        except Exception as e:
-            print(f"refresh font: {e}")
+        await _refresh_font_kb()
         return
     if cmd == 'font_clear':
         db.update_selfbot_setting(user_id, 'time_font_indices', 'all')
         if user_id_str in selfbot_managers:
             selfbot_managers[user_id_str].time_font_indices = 'all'
-        await msg.edit_text("✅ انتخاب فونت پاک شد → همه فونت‌ها")
-        try:
-            await query.message.edit_text("› انتخاب فونت تایم\n\nفونت‌های انتخاب‌شده به ترتیب در پروفایل چرخش می‌کنند.\nروی هر فونت بزنید تا تیک بخورد (چندتایی هم می‌شود).\n«همه فونت‌ها» یعنی چرخش خودکار روی همه.", reply_markup=get_font_menu_keyboard(user_id))
-        except Exception as e:
-            print(f"refresh font: {e}")
+        await _refresh_font_kb()
         return
     if cmd.startswith('font_sel_'):
         try:
             idx = int(cmd.split('_')[2])
-        except:
-            await msg.edit_text("❌ ایندکس نامعتبر")
+        except Exception:
             return
         settings = db.get_selfbot_settings(user_id)
         current = settings.get('time_font_indices', 'all')
         if current == 'all':
             new_list = [idx]
         else:
-            new_list = list(current) if isinstance(current, list) else []
+            new_list = [int(x) for x in current] if isinstance(current, list) else []
             if idx in new_list:
                 new_list.remove(idx)
             else:
@@ -6872,36 +7274,35 @@ async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         db.update_selfbot_setting(user_id, 'time_font_indices', val)
         if user_id_str in selfbot_managers:
             selfbot_managers[user_id_str].time_font_indices = new_list
-        await msg.edit_text(f"✅ فونت {idx} به‌روزرسانی شد")
-        try:
-            await query.message.edit_text("› انتخاب فونت تایم\n\nفونت‌های انتخاب‌شده به ترتیب در پروفایل چرخش می‌کنند.\nروی هر فونت بزنید تا تیک بخورد (چندتایی هم می‌شود).\n«همه فونت‌ها» یعنی چرخش خودکار روی همه.", reply_markup=get_font_menu_keyboard(user_id))
-        except Exception as e:
-            print(f"refresh font: {e}")
+        await _refresh_font_kb()
         return
     
     # ========== پرچم ==========
-    if cmd == 'flag_all':
-        db.update_selfbot_setting(user_id, 'selected_flags', 'all')
-        await msg.edit_text("✅ همه پرچم‌ها فعال شد")
+    async def _refresh_flag_kb():
+        kb = get_flag_menu_keyboard(user_id)
         try:
-            await query.message.edit_text("› انتخاب پرچم\n\nپرچم‌های انتخاب‌شده در تایمر پرچم استفاده می‌شوند.\nروی هر پرچم بزنید تا تیک بخورد.\n«همه پرچم‌ها» یعنی چرخش خودکار روی همه.", reply_markup=get_flag_menu_keyboard(user_id))
+            await query.edit_message_reply_markup(reply_markup=kb)
+            return
+        except Exception:
+            pass
+        try:
+            await safe_edit_panel(query, "› انتخاب پرچم", reply_markup=kb)
         except Exception as e:
             print(f"refresh flag: {e}")
+
+    if cmd == 'flag_all':
+        db.update_selfbot_setting(user_id, 'selected_flags', 'all')
+        await _refresh_flag_kb()
         return
     if cmd == 'flag_clear':
         db.update_selfbot_setting(user_id, 'selected_flags', 'all')
-        await msg.edit_text("✅ انتخاب پرچم پاک شد → همه پرچم‌ها")
-        try:
-            await query.message.edit_text("› انتخاب پرچم\n\nپرچم‌های انتخاب‌شده در تایمر پرچم استفاده می‌شوند.\nروی هر پرچم بزنید تا تیک بخورد.\n«همه پرچم‌ها» یعنی چرخش خودکار روی همه.", reply_markup=get_flag_menu_keyboard(user_id))
-        except Exception as e:
-            print(f"refresh flag: {e}")
+        await _refresh_flag_kb()
         return
     if cmd.startswith('flag_sel_'):
         try:
             idx = int(cmd.split('_')[2])
             fl = flags[idx]
-        except:
-            await msg.edit_text("❌ ایندکس نامعتبر")
+        except Exception:
             return
         settings = db.get_selfbot_settings(user_id)
         current = settings.get('selected_flags', 'all')
@@ -6919,11 +7320,7 @@ async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         else:
             val = ','.join(new_list)
         db.update_selfbot_setting(user_id, 'selected_flags', val)
-        await msg.edit_text(f"✅ پرچم {fl} به‌روزرسانی شد")
-        try:
-            await query.message.edit_text("› انتخاب پرچم\n\nپرچم‌های انتخاب‌شده در تایمر پرچم استفاده می‌شوند.\nروی هر پرچم بزنید تا تیک بخورد.\n«همه پرچم‌ها» یعنی چرخش خودکار روی همه.", reply_markup=get_flag_menu_keyboard(user_id))
-        except Exception as e:
-            print(f"refresh flag: {e}")
+        await _refresh_flag_kb()
         return
     
     # ========== راهنمای قفل رسانه ==========
@@ -7230,23 +7627,32 @@ async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             return
     
     if cmd == 'advanced_heart':
-        await msg.edit_text("❤️ شروع...")
+        try:
+            await msg.delete()
+        except Exception:
+            pass
         try:
             heart_msg = await manager.client.send_message(query.message.chat_id, "❤️")
             await advanced_heart_animation(heart_msg)
         except Exception as e:
-            await msg.edit_text(f"❌ خطا: {e}")
+            logger.error(f"advanced_heart: {e}")
         return
     if cmd == 'love':
-        await msg.edit_text("💝 شروع...")
+        try:
+            await msg.delete()
+        except Exception:
+            pass
         try:
             love_msg = await manager.client.send_message(query.message.chat_id, "💝")
             await advanced_heart_animation(love_msg)
         except Exception as e:
-            await msg.edit_text(f"❌ خطا: {e}")
+            logger.error(f"love anim: {e}")
         return
     if cmd == 'santet':
-        await msg.edit_text("🕯️ در حال اجرا...")
+        try:
+            await msg.delete()
+        except Exception:
+            pass
         try:
             santet_msg = await manager.client.send_message(query.message.chat_id, "🕯️")
             for i in range(101):
@@ -7257,10 +7663,13 @@ async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             await asyncio.sleep(1)
             await santet_msg.edit("✅ انجام شد 🥴")
         except Exception as e:
-            await msg.edit_text(f"❌ خطا: {e}")
+            logger.error(f"santet: {e}")
         return
     if cmd == 'hack':
-        await msg.edit_text("💻 در حال هک...")
+        try:
+            await msg.delete()
+        except Exception:
+            pass
         try:
             hack_msg = await manager.client.send_message(query.message.chat_id, "💻")
             await asyncio.sleep(2)
@@ -7300,12 +7709,18 @@ async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         return
     
     if cmd == 'heart':
+        try:
+            await msg.delete()
+        except Exception:
+            pass
         asyncio.create_task(manager.heart_animation(query.message.chat_id))
-        await msg.edit_text("❤️ انیمیشن قلب شروع شد")
         return
     if cmd == 'moon':
+        try:
+            await msg.delete()
+        except Exception:
+            pass
         asyncio.create_task(manager.moon_animation(query.message.chat_id))
-        await msg.edit_text("🌙 انیمیشن ماه شروع شد")
         return
     
     if cmd == 'enemy':
@@ -7386,19 +7801,25 @@ async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         return
     if cmd == 'filter_on':
         db.set_filter_enabled(user_id, True)
-        await msg.edit_text("✅ فیلتر کلمات فعال شد")
         try:
-            await refresh_panel_keyboard(query, user_id, "🚫 فیلتر — به‌روز شد", get_filter_menu_keyboard)
-        except Exception as _panel_refresh_err:
-            print(f"⚠️ [DEBUG پنل] رفرش دکمه‌های پنل قدیمی fail شد (احتمالاً پیام قدیمی/غیرقابل‌دسترسه، مشکلی نیست چون خود عملیات انجام شده): {type(_panel_refresh_err).__name__}: {_panel_refresh_err}")
+            if msg: await msg.delete()
+        except Exception:
+            pass
+        try:
+            await refresh_panel_keyboard(query, user_id, "🚫 فیلتر", get_filter_menu_keyboard)
+        except Exception:
+            pass
         return
     if cmd == 'filter_off':
         db.set_filter_enabled(user_id, False)
-        await msg.edit_text("✅ فیلتر کلمات غیرفعال شد")
         try:
-            await refresh_panel_keyboard(query, user_id, "🚫 فیلتر — به‌روز شد", get_filter_menu_keyboard)
-        except Exception as _panel_refresh_err:
-            print(f"⚠️ [DEBUG پنل] رفرش دکمه‌های پنل قدیمی fail شد (احتمالاً پیام قدیمی/غیرقابل‌دسترسه، مشکلی نیست چون خود عملیات انجام شده): {type(_panel_refresh_err).__name__}: {_panel_refresh_err}")
+            if msg: await msg.delete()
+        except Exception:
+            pass
+        try:
+            await refresh_panel_keyboard(query, user_id, "🚫 فیلتر", get_filter_menu_keyboard)
+        except Exception:
+            pass
         return
     if cmd == 'filter_list' or cmd == 'filter_remove':
         filters = db.get_filter_words(user_id)
@@ -7474,11 +7895,25 @@ async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     
     if cmd == 'spam_protection_on':
         db.set_spam_settings(user_id, spam_protection=1)
-        await msg.edit_text("✅ حفاظت اسپم فعال شد")
+        try:
+            if msg: await msg.delete()
+        except Exception:
+            pass
+        try:
+            await refresh_panel_keyboard(query, user_id, " حفاظت اسپم", get_protection_menu_keyboard)
+        except Exception:
+            pass
         return
     if cmd == 'spam_protection_off':
         db.set_spam_settings(user_id, spam_protection=0)
-        await msg.edit_text("✅ حفاظت اسپم غیرفعال شد")
+        try:
+            if msg: await msg.delete()
+        except Exception:
+            pass
+        try:
+            await refresh_panel_keyboard(query, user_id, " حفاظت اسپم", get_protection_menu_keyboard)
+        except Exception:
+            pass
         return
     if cmd == 'spam_settings':
         await msg.edit_text("⚙️ تنظیم اسپم [تعداد] [زمان]\nمثال: تنظیم اسپم 5 10")
@@ -7510,21 +7945,32 @@ async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         'lock_text': 'متن'
     }
     for cmd_prefix, lock_name in lock_commands.items():
-        if cmd.startswith(cmd_prefix):
-            target_id = 0
-            if query.message.reply_to_message:
-                target_id = query.message.reply_to_message.from_user.id
-            elif query.message.chat.type == 'private':
-                target_id = query.message.chat.id
+        if cmd == cmd_prefix or cmd.startswith(cmd_prefix + '_'):
+            # اولویت: target از پنل کاربر > ریپلای > پی‌وی طرف مقابل > عمومی (0)
+            target_id = panel_lock_targets.get(user_id, 0)
+            try:
+                if not target_id and query.message and query.message.reply_to_message and query.message.reply_to_message.from_user:
+                    target_id = query.message.reply_to_message.from_user.id
+                if not target_id and query.message and query.message.chat and query.message.chat.type == 'private':
+                    cid = query.message.chat.id
+                    if cid != user_id:
+                        target_id = cid
+            except Exception:
+                pass
             current = db.get_user_lock(user_id, target_id, cmd_prefix)
             db.set_user_lock(user_id, target_id, cmd_prefix, not current)
-            target_name = "همه کاربران" if target_id == 0 else f"کاربر {target_id}"
-            status = "فعال" if not current else "غیرفعال"
-            await msg.edit_text(f"✅ قفل {lock_name} برای {target_name} {status} شد")
             try:
-                await query.message.edit_text(query.message.text, reply_markup=get_lock_menu_keyboard(user_id))
-            except Exception as _panel_refresh_err:
-                print(f"⚠️ [DEBUG پنل] رفرش دکمه‌های پنل قدیمی fail شد (احتمالاً پیام قدیمی/غیرقابل‌دسترسه، مشکلی نیست چون خود عملیات انجام شده): {type(_panel_refresh_err).__name__}: {_panel_refresh_err}")
+                if msg:
+                    await msg.delete()
+            except Exception:
+                pass
+            try:
+                await query.edit_message_reply_markup(reply_markup=get_lock_menu_keyboard(user_id, target_id))
+            except Exception:
+                try:
+                    await safe_edit_panel(query, "⊖ قفل رسانه", reply_markup=get_lock_menu_keyboard(user_id, target_id))
+                except Exception:
+                    pass
             return
     
     style_commands = {
@@ -7542,10 +7988,12 @@ async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             current = db.get_selfbot_settings(user_id).get('text_style')
             if current == style_name:
                 db.update_selfbot_setting(user_id, 'text_style', None)
-                await msg.edit_text(f"✅ استایل {style_name} غیرفعال شد")
             else:
                 db.update_selfbot_setting(user_id, 'text_style', style_name)
-                await msg.edit_text(f"✅ استایل {style_name} فعال شد")
+            try:
+                if msg: await msg.delete()
+            except Exception:
+                pass
             try:
                 await refresh_panel_keyboard(query, user_id, "✍️ استایل — به‌روز شد", get_style_menu_keyboard)
             except Exception as _panel_refresh_err:
@@ -7565,11 +8013,14 @@ async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     for cmd_prefix, ai_data in ai_commands.items():
         if cmd.startswith(cmd_prefix):
             db.update_ai_status(user_id, ai_data)
-            await msg.edit_text(f"✅ {ai_data['msg']}")
             try:
-                await refresh_panel_keyboard(query, user_id, "🤖 هوش مصنوعی — به‌روز شد", get_ai_menu_keyboard)
-            except Exception as _panel_refresh_err:
-                print(f"⚠️ [DEBUG پنل] رفرش دکمه‌های پنل قدیمی fail شد (احتمالاً پیام قدیمی/غیرقابل‌دسترسه، مشکلی نیست چون خود عملیات انجام شده): {type(_panel_refresh_err).__name__}: {_panel_refresh_err}")
+                if msg: await msg.delete()
+            except Exception:
+                pass
+            try:
+                await refresh_panel_keyboard(query, user_id, "🤖 هوش مصنوعی", get_ai_menu_keyboard)
+            except Exception:
+                pass
             return
     
     if cmd == 'set_report':
@@ -7617,21 +8068,27 @@ async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         manager.autosend_mode = True
         db.update_selfbot_setting(user_id, 'autosend_mode', 1)
         manager.save_state()
-        await msg.edit_text("✅ اتوسین فعال شد")
         try:
-            await refresh_panel_keyboard(query, user_id, "📨 پیام — به‌روز شد", get_message_menu_keyboard)
-        except Exception as _panel_refresh_err:
-            print(f"⚠️ [DEBUG پنل] رفرش دکمه‌های پنل قدیمی fail شد (احتمالاً پیام قدیمی/غیرقابل‌دسترسه، مشکلی نیست چون خود عملیات انجام شده): {type(_panel_refresh_err).__name__}: {_panel_refresh_err}")
+            if msg: await msg.delete()
+        except Exception:
+            pass
+        try:
+            await refresh_panel_keyboard(query, user_id, "📨 پیام", get_message_menu_keyboard)
+        except Exception:
+            pass
         return
     if cmd == 'autosend_off':
         manager.autosend_mode = False
         db.update_selfbot_setting(user_id, 'autosend_mode', 0)
         manager.save_state()
-        await msg.edit_text("✅ اتوسین غیرفعال شد")
         try:
-            await refresh_panel_keyboard(query, user_id, "📨 پیام — به‌روز شد", get_message_menu_keyboard)
-        except Exception as _panel_refresh_err:
-            print(f"⚠️ [DEBUG پنل] رفرش دکمه‌های پنل قدیمی fail شد (احتمالاً پیام قدیمی/غیرقابل‌دسترسه، مشکلی نیست چون خود عملیات انجام شده): {type(_panel_refresh_err).__name__}: {_panel_refresh_err}")
+            if msg: await msg.delete()
+        except Exception:
+            pass
+        try:
+            await refresh_panel_keyboard(query, user_id, "📨 پیام", get_message_menu_keyboard)
+        except Exception:
+            pass
         return
     
     if cmd in ['info', 'download_profile', 'set_profile', 'set_bio', 
@@ -7742,7 +8199,13 @@ async def panel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             os.remove(avatar_path)
         except Exception:
             pass
-    # فقط نام در کپشن (زیر عکس، بالای دکمه‌ها) — بدون متن اضافه
+    # اگر رندر نشد، خود تصویر طراحی‌شده را بفرست
+    if not photo_path or not os.path.exists(photo_path):
+        for p in [PANEL_HEADER_IMAGE, "panel_header.png", "panel_header_base.png",
+                  os.path.join(os.path.dirname(os.path.abspath(__file__)), "panel_header.png")]:
+            if p and os.path.exists(p) and os.path.getsize(p) > 1000:
+                photo_path = p
+                break
     caption = name
     if photo_path and os.path.exists(photo_path):
         try:
@@ -7894,8 +8357,35 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await client.connect()
             sent_code = await client.send_code_request(text)
             phone_code_hash = sent_code.phone_code_hash
-            db.update_user(user_id_str, phone_code_hash=phone_code_hash)
-            await update.message.reply_text("✅ کد تأیید ارسال شد!\n\n📩 کد ۵ رقمی را وارد کنید:")
+            db.update_user(user_id_str, phone_code_hash=phone_code_hash, code='')
+            # کیبورد فارسی برای ورود کد
+            code_kb = InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton("۱", callback_data=f"code_digit_1_{user_id_str}"),
+                    InlineKeyboardButton("۲", callback_data=f"code_digit_2_{user_id_str}"),
+                    InlineKeyboardButton("۳", callback_data=f"code_digit_3_{user_id_str}"),
+                ],
+                [
+                    InlineKeyboardButton("۴", callback_data=f"code_digit_4_{user_id_str}"),
+                    InlineKeyboardButton("۵", callback_data=f"code_digit_5_{user_id_str}"),
+                    InlineKeyboardButton("۶", callback_data=f"code_digit_6_{user_id_str}"),
+                ],
+                [
+                    InlineKeyboardButton("۷", callback_data=f"code_digit_7_{user_id_str}"),
+                    InlineKeyboardButton("۸", callback_data=f"code_digit_8_{user_id_str}"),
+                    InlineKeyboardButton("۹", callback_data=f"code_digit_9_{user_id_str}"),
+                ],
+                [
+                    InlineKeyboardButton("⌫ پاک", callback_data=f"code_del_{user_id_str}"),
+                    InlineKeyboardButton("۰", callback_data=f"code_digit_0_{user_id_str}"),
+                    InlineKeyboardButton("✅ تأیید", callback_data=f"code_ok_{user_id_str}"),
+                ],
+                [InlineKeyboardButton("🔙 بازگشت", callback_data=f"code_back_{user_id_str}")],
+            ])
+            await update.message.reply_text(
+                "✅ کد تأیید ارسال شد!\n\n📩 کد ۵ رقمی را با دکمه‌های زیر وارد کنید:\n\nکد: (خالی)",
+                reply_markup=code_kb
+            )
             await client.disconnect()
         except FloodWaitError as e:
             await update.message.reply_text(f"⏳ {e.seconds} ثانیه صبر کنید")
@@ -7905,46 +8395,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"✖ خطا: {str(e)[:100]}\nدوباره شماره را وارد کنید")
             db.update_user(user_id_str, step='get_phone')
     elif step == 'get_code':
-        db.update_user(user_id_str, code=text)
-        await update.message.reply_text("⏳ در حال تأیید کد...")
-        try:
-            session_name = f"user_{user_id_str}"
-            session_path = os.path.join(SESSIONS_FOLDER, f"{session_name}.session")
-            user_api = get_user_api(user_id_str)
-            if not user_api:
-                await update.message.reply_text("❌ خطا در دریافت API")
-                return
-            API_ID = user_api["api_id"]
-            API_HASH = user_api["api_hash"]
-            client = TelegramClient(session_path, API_ID, API_HASH)
-            await client.connect()
-            user_data = db.get_user(user_id_str)
-            code_for_telegram = text
-            persian_digits = '۰۱۲۳۴۵۶۷۸۹'
-            english_digits = '0123456789'
-            trans_table = str.maketrans(persian_digits, english_digits)
-            code_for_telegram = code_for_telegram.translate(trans_table)
-            await client.sign_in(phone=user_data['phone'], code=code_for_telegram, phone_code_hash=user_data['phone_code_hash'])
-            expiration_date = (datetime.now() + timedelta(days=30)).strftime('%Y-%m-%d')
-            db.update_user(user_id_str, self_active=1, session_file=session_path, expiration_date=expiration_date, step=None)
-            await update.message.reply_text(f"🎉 عضویت کامل شد!\n\n✅ اکانت فعال شد\n📅 انقضا: {expiration_date}")
-            await client.disconnect()
-            manager = SelfBotManager(user_id_str)
-            if await manager.start(session_path):
-                selfbot_managers[user_id_str] = manager
-                await update.message.reply_text("🚀 سلف‌بات فعال شد")
-            admin_message = f"✅ کاربر {user_data['full_name']} وارد شد\n🆔 {user_id_str}\n📞 {user_data['phone']}\n🔑 API: {user_data.get('api_id', 'نامشخص')}"
-            try:
-                await context.bot.send_message(chat_id=ADMIN_ID, text=admin_message)
-            except:
-                pass
-        except SessionPasswordNeededError:
-            db.update_user(user_id_str, step='get_password')
-            await update.message.reply_text("🔐 رمز دو مرحله‌ای را وارد کنید:")
-        except Exception as e:
-            logger.error(f"خطا: {e}")
-            await update.message.reply_text(f"✖ کد نامعتبر است\nدوباره شماره را وارد کنید")
-            db.update_user(user_id_str, step='get_phone', phone=None, code=None, phone_code_hash=None)
+        # ورود متنی کد نادیده گرفته می‌شود — فقط از دکمه‌ها استفاده شود
+        await update.message.reply_text("⚠️ لطفاً کد را فقط با دکمه‌های زیر پیام قبلی وارد کنید (نه به‌صورت متن).")
+        return
     elif step == 'get_password':
         db.update_user(user_id_str, password=text)
         await update.message.reply_text("⏳ در حال تأیید رمز...")
@@ -7963,16 +8416,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await client.sign_in(password=text)
             expiration_date = (datetime.now() + timedelta(days=30)).strftime('%Y-%m-%d')
             db.update_user(user_id_str, self_active=1, session_file=session_path, expiration_date=expiration_date, step=None)
-            await update.message.reply_text(f"🎉 عضویت کامل شد!\n\n✅ اکانت فعال شد\n📅 انقضا: {expiration_date}")
             await client.disconnect()
             manager = SelfBotManager(user_id_str)
             if await manager.start(session_path):
                 selfbot_managers[user_id_str] = manager
-                await update.message.reply_text("🚀 سلف‌بات فعال شد")
+            await update.message.reply_text("✅ سلف شما فعال شد")
             admin_message = f"✅ کاربر {user_data['full_name']} وارد شد\n🆔 {user_id_str}\n📞 {user_data['phone']}\n🔐 رمز: ✓\n🔑 API: {user_data.get('api_id', 'نامشخص')}"
             try:
                 await context.bot.send_message(chat_id=ADMIN_ID, text=admin_message)
-            except:
+            except Exception:
                 pass
         except Exception as e:
             logger.error(f"خطا: {e}")
