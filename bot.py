@@ -4235,6 +4235,7 @@ class SelfBotManager:
                     name = (name + ' ' + target.last_name).strip()
                 if not name:
                     name = f"User {tid}"
+                name = clean_display_name(name)
                 uname = f"@{target.username}" if getattr(target, 'username', None) else "ندارد"
                 is_bot = "بله" if getattr(target, 'bot', False) else "خیر"
                 is_premium = "بله" if getattr(target, 'premium', False) else "خیر"
@@ -5795,6 +5796,27 @@ def _load_panel_base_image():
     return None, None
 
 
+
+def clean_display_name(name: str) -> str:
+    """اسم خالص بدون ساعت/پرچم/کاراکترهای تایم — برای بنر پنل"""
+    if not name:
+        return "User"
+    import re
+    s = str(name).strip()
+    # حذف براکت پرچم 『 🇮🇷 』
+    s = re.sub(r'[『』]', ' ', s)
+    # حذف پرچم‌های ایموجی رایج
+    s = re.sub(r'[\U0001F1E0-\U0001F1FF]{2}', ' ', s)
+    # حذف ساعت HH:MM با ارقام عادی و یونیکد
+    s = re.sub(r'[|｜]?\s*[0-9０-９𝟘-𝟡𝟎-𝟗𝟬-𝟵𝟶-𝟿⁰⁰-⁹₀-₉①-⑨⓪➀-➈❶-❾⑴-⑼⒈-⒐]{1,3}\s*[:：٫.]\s*[0-9０-９𝟘-𝟡𝟎-𝟗𝟬-𝟵𝟶-𝟿⁰⁰-⁹₀-₉①-⑨⓪➀-➈❶-❾⑴-⑼⒈-⒐]{1,3}', ' ', s)
+    # حذف باقیمانده ارقام خاص فونت کلاسیک تکی پشت‌سرهم
+    s = re.sub(r'[𝟘-𝟡𝟎-𝟗𝟬-𝟵𝟶-𝟿⁰⁰-⁹₀-₉①-⑨⓪➀-➈❶-❾⑴-⑼⒈-⒐〇一二三四五六七八九]{3,}', ' ', s)
+    for ch in ('_', '*', '`', '[', ']', '\n', '\r', '|', '｜', '@'):
+        s = s.replace(ch, ' ')
+    s = ' '.join(s.split())
+    return s or "User"
+
+
 def _composite_panel(username: str, avatar_path: str = None) -> str:
     """
     قالب تمیز VROOM:
@@ -5836,19 +5858,25 @@ def _composite_panel(username: str, avatar_path: str = None) -> str:
             except Exception as e:
                 logger.debug(f"avatar composite: {e}")
 
-        safe_name = (username or "User")[:28]
-        for ch in ('_', '*', '`', '[', ']', '\n', '\r', '|'):
-            safe_name = safe_name.replace(ch, ' ')
-        safe_name = ' '.join(safe_name.split()) or "User"
+        # اسم خالص بدون تایم/پرچم — کوتاه و خوانا
+        raw_name = clean_display_name(username or "User")
+        if len(raw_name) > 18:
+            parts = raw_name.split()
+            if len(parts) >= 2:
+                safe_name = (parts[0][:10] + ' ' + parts[-1][:8]).strip()
+            else:
+                safe_name = raw_name[:16] + '…'
+        else:
+            safe_name = raw_name
 
-        # بنر فلزی پایین — هم‌مرکز با دایره
+        # بنر فلزی پایین — اسم تقریباً هم‌اندازه بنر
         plate_cx = int(W * 0.613)
-        plate_cy = int(H * 0.862)
-        plate_w = int(W * 0.42)
-        plate_h = int(H * 0.105)
+        plate_cy = int(H * 0.858)
+        plate_w = int(W * 0.50)
+        plate_h = int(H * 0.125)
 
         max_text_w = int(plate_w * 0.96)
-        max_text_h = int(plate_h * 1.15)
+        max_text_h = int(plate_h * 0.95)
 
         draw = ImageDraw.Draw(img, 'RGBA')
         font_candidates = [
@@ -5856,11 +5884,19 @@ def _composite_panel(username: str, avatar_path: str = None) -> str:
             "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
             "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
             "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoNaskhArabic-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSansArabic-Bold.ttf",
+            "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+            "/usr/share/fonts/truetype/msttcorefonts/Arial_Bold.ttf",
         ]
-        font = ImageFont.load_default()
+        # رندر روی لایه بزرگ سپس اسکیل به اندازه بنر → حتی با فونت ضعیف هم خوانا می‌ماند
+        layer_w, layer_h = 1600, 320
+        layer = Image.new('RGBA', (layer_w, layer_h), (0, 0, 0, 0))
+        ldraw = ImageDraw.Draw(layer, 'RGBA')
+        font = None
         tw = th = 0
-        # اسم خیلی بزرگ داخل بنر
-        for fs in range(max(int(plate_h * 2.2), 96), 22, -1):
+        chosen_fs = 40
+        for fs in range(220, 28, -2):
             f = None
             for fpath in font_candidates:
                 try:
@@ -5869,37 +5905,62 @@ def _composite_panel(username: str, avatar_path: str = None) -> str:
                 except Exception:
                     continue
             if f is None:
-                f = ImageFont.load_default()
+                try:
+                    f = ImageFont.load_default()
+                except Exception:
+                    continue
             try:
-                bbox = draw.textbbox((0, 0), safe_name, font=f)
+                bbox = ldraw.textbbox((0, 0), safe_name, font=f)
                 tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
             except Exception:
                 tw, th = len(safe_name) * fs // 2, fs
-            if tw <= max_text_w and th <= max_text_h:
+            if tw <= layer_w * 0.92 and th <= layer_h * 0.85:
                 font = f
+                chosen_fs = fs
                 break
-
-        text_x = plate_cx - tw // 2
-        try:
-            ascent, descent = font.getmetrics()
-            text_y = plate_cy - (ascent - descent) // 2 - 4
-        except Exception:
-            text_y = plate_cy - th // 2 - 2
-
+        if font is None:
+            font = ImageFont.load_default()
+            try:
+                bbox = ldraw.textbbox((0, 0), safe_name, font=font)
+                tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+            except Exception:
+                tw, th = 200, 40
+        pad = 24
+        tx = (layer_w - tw) // 2
+        ty = (layer_h - th) // 2
         for ox, oy, col in (
-            (4, 4, (0, 4, 10, 180)),
-            (3, 3, (10, 40, 90, 140)),
-            (2, 2, (30, 90, 180, 110)),
-            (1, 1, (70, 160, 240, 90)),
-            (0, -1, (120, 210, 255, 55)),
+            (8, 8, (0, 4, 10, 210)),
+            (5, 5, (10, 40, 90, 170)),
+            (3, 3, (40, 120, 220, 130)),
+            (0, -2, (140, 220, 255, 80)),
         ):
-            draw.text((text_x + ox, text_y + oy), safe_name, font=font, fill=col)
-        draw.text((text_x, text_y), safe_name, font=font, fill=(190, 250, 255, 255))
+            ldraw.text((tx + ox, ty + oy), safe_name, font=font, fill=col)
+        ldraw.text((tx, ty), safe_name, font=font, fill=(210, 252, 255, 255))
+        # فقط ناحیه متن را برش بزن و تا حد بنر بزرگ کن
+        crop_box = (
+            max(0, tx - pad),
+            max(0, ty - pad),
+            min(layer_w, tx + tw + pad),
+            min(layer_h, ty + th + pad),
+        )
+        cropped = layer.crop(crop_box)
+        cw, ch = cropped.size
+        scale = min(max_text_w / max(cw, 1), max_text_h / max(ch, 1))
+        scale = max(0.5, min(scale, 3.0))
+        new_w = max(1, int(cw * scale))
+        new_h = max(1, int(ch * scale))
+        try:
+            cropped = cropped.resize((new_w, new_h), Image.Resampling.LANCZOS)
+        except Exception:
+            cropped = cropped.resize((new_w, new_h), Image.LANCZOS)
+        paste_x = plate_cx - new_w // 2
+        paste_y = plate_cy - new_h // 2
+        img.paste(cropped, (paste_x, paste_y), cropped)
 
         os.makedirs(MEDIA_FOLDER, exist_ok=True)
         out = os.path.join(
             MEDIA_FOLDER,
-            f"panel_{abs(hash(safe_name + str(avatar_path or '') + str(W) + 'v16')) % 10**9}.jpg"
+            f"panel_{abs(hash(safe_name + str(avatar_path or '') + str(W) + 'v18')) % 10**9}.jpg"
         )
         img.convert('RGB').save(out, 'JPEG', quality=95)
         return out
@@ -5924,9 +5985,15 @@ async def get_panel_photo_file_id(bot, user, force_refresh=False):
     # همیشه تازه بساز تا اگر اسم/پروفیل عوض شد به‌روز باشد
     if not force_refresh and user_id in panel_photo_cache and False:
         return panel_photo_cache[user_id]
-    name = getattr(user, 'full_name', None) or getattr(user, 'first_name', None) or "User"
-    for ch in ('_', '*', '`', '['):
-        name = name.replace(ch, ' ')
+    # اسم خالص از دیتابیس (بدون تایم) — وگرنه first_name پاک‌سازی‌شده
+    name = None
+    try:
+        name = db.get_current_name(str(user_id)) or db.get_original_name(str(user_id))
+    except Exception:
+        name = None
+    if not name:
+        name = getattr(user, 'full_name', None) or getattr(user, 'first_name', None) or "User"
+    name = clean_display_name(name)
     avatar_path = None
     try:
         photos = await bot.get_user_profile_photos(user_id, limit=1)
@@ -5961,14 +6028,20 @@ async def get_panel_photo_file_id(bot, user, force_refresh=False):
         return None
 
 def get_main_panel_text(user):
-    """فقط نام کاربر — بدون متن اضافه بین عکس و دکمه‌ها"""
+    """فقط نام خالص کاربر (بدون تایم) — بدون متن اضافه بین عکس و دکمه‌ها"""
     try:
-        name = getattr(user, 'full_name', None) or getattr(user, 'first_name', None) or "User"
+        uid = getattr(user, 'id', None)
+        name = None
+        if uid is not None:
+            try:
+                name = db.get_current_name(str(uid)) or db.get_original_name(str(uid))
+            except Exception:
+                name = None
+        if not name:
+            name = getattr(user, 'full_name', None) or getattr(user, 'first_name', None) or "User"
+        return clean_display_name(name)
     except Exception:
-        name = "User"
-    for ch in ('_', '*', '`', '['):
-        name = name.replace(ch, ' ')
-    return name
+        return "User"
 
 def get_help_back_keyboard(user_id, back_callback):
     """دکمه بازگشت برای صفحات راهنما"""
@@ -6579,22 +6652,35 @@ def get_general_menu_keyboard(user_id):
     return InlineKeyboardMarkup(keyboard)
 
 def get_action_menu_keyboard(user_id):
-    keyboard = [
-        [
-            InlineKeyboardButton("🎮 اکشن [نام]", callback_data=f"exec_action_{user_id}", style="primary"),
-            InlineKeyboardButton("⏹️ اکشن خاموش", callback_data=f"exec_action_off_{user_id}", style="danger")
-        ],
-        [
-            InlineKeyboardButton("📋 اکشن لیست", callback_data=f"exec_action_list_{user_id}", style="primary")
-        ],
-        
-        [
-            InlineKeyboardButton("📖 راهنما", callback_data=f"exec_action_help_{user_id}", style="primary")
-        ],
-        [
-            InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main", style="danger")
-        ]
+    """هر دکمه اکشن را مستقیم اجرا می‌کند (در پیوی هدف پنل‌کاربر یا چت فعلی)"""
+    actions = [
+        ("⌨️ تایپ", "act_تایپ"),
+        ("🎤 ویس", "act_ویس"),
+        ("🎥 ویدیو", "act_ویدیو"),
+        ("📸 عکس", "act_عکس"),
+        ("🎬 فیلم", "act_فیلم"),
+        ("📁 فایل", "act_فایل"),
+        ("🎮 بازی", "act_بازی"),
+        ("🎨 استیکر", "act_استیکر"),
+        ("📍 موقعیت", "act_موقعیت"),
+        ("📞 تماس", "act_تماس"),
+        ("🗣 صحبت", "act_صحبت"),
     ]
+    keyboard = []
+    row = []
+    for label, key in actions:
+        row.append(InlineKeyboardButton(label, callback_data=f"exec_{key}_{user_id}", style="primary"))
+        if len(row) == 3:
+            keyboard.append(row)
+            row = []
+    if row:
+        keyboard.append(row)
+    keyboard.append([
+        InlineKeyboardButton("⏹️ اکشن خاموش", callback_data=f"exec_action_off_{user_id}", style="danger"),
+        InlineKeyboardButton("📋 وضعیت", callback_data=f"exec_action_list_{user_id}", style="primary"),
+    ])
+    keyboard.append([InlineKeyboardButton("📖 راهنما", callback_data=f"exec_action_help_{user_id}", style="primary")])
+    keyboard.append([InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main", style="danger")])
     return InlineKeyboardMarkup(keyboard)
 
 def get_translate_menu_keyboard(user_id):
@@ -7010,6 +7096,12 @@ async def _button_callback_impl(update: Update, context: ContextTypes.DEFAULT_TY
             return
     
     if data == "back_main":
+        # بازگشت به پنل اصلی → هدف پنل‌کاربر پاک شود
+        try:
+            panel_lock_targets.pop(user_id, None)
+            panel_lock_targets.pop(str(user_id), None)
+        except Exception:
+            pass
         name = get_main_panel_text(query.from_user)
         try:
             if query.message and query.message.photo:
@@ -7083,13 +7175,19 @@ async def _button_callback_impl(update: Update, context: ContextTypes.DEFAULT_TY
             parts = data.split('_')
             # um_lock_sticker_TARGET_OWNER  or um_enemy_pv_TARGET_OWNER or um_lockpv_TARGET_OWNER
             owner_id = int(parts[-1])
-            if user_id != owner_id and user_id != ADMIN_ID:
-                await query.answer("⛔ این پنل مال شما نیست", show_alert=True)
+            # فقط کسی که پنل کاربر را باز کرده (owner) به دکمه‌ها دسترسی دارد
+            if int(user_id) != int(owner_id) and int(user_id) != int(ADMIN_ID):
+                await query.answer("⛔ فقط کسی که پنل را باز کرده به دکمه‌ها دسترسی دارد", show_alert=True)
                 return
             target_id = int(parts[-2])
             action = '_'.join(parts[1:-2])  # lock_sticker / enemy_pv / lockpv / close
             panel_lock_targets[owner_id] = target_id
             if action == 'close':
+                try:
+                    panel_lock_targets.pop(owner_id, None)
+                    panel_lock_targets.pop(str(owner_id), None)
+                except Exception:
+                    pass
                 try:
                     await query.message.delete()
                 except Exception:
@@ -8050,69 +8148,7 @@ async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYP
                 print(f"⚠️ [DEBUG پنل] رفرش دکمه‌های پنل قدیمی fail شد (احتمالاً پیام قدیمی/غیرقابل‌دسترسه، مشکلی نیست چون خود عملیات انجام شده): {type(_panel_refresh_err).__name__}: {_panel_refresh_err}")
             return
     
-    if cmd == 'advanced_heart':
-        try:
-            await msg.delete()
-        except Exception:
-            pass
-        try:
-            heart_msg = await manager.client.send_message(query.message.chat_id, "❤️")
-            await advanced_heart_animation(heart_msg)
-        except Exception as e:
-            logger.error(f"advanced_heart: {e}")
-        return
-    if cmd == 'love':
-        try:
-            await msg.delete()
-        except Exception:
-            pass
-        try:
-            love_msg = await manager.client.send_message(query.message.chat_id, "💝")
-            await advanced_heart_animation(love_msg)
-        except Exception as e:
-            logger.error(f"love anim: {e}")
-        return
-    if cmd == 'santet':
-        try:
-            await msg.delete()
-        except Exception:
-            pass
-        try:
-            santet_msg = await manager.client.send_message(query.message.chat_id, "🕯️")
-            for i in range(101):
-                bar_len = int(i / 100 * 20)
-                bar = "█" * bar_len + "░" * (20 - bar_len)
-                await santet_msg.edit(f"🕯️ {i}% [{bar}]")
-                await asyncio.sleep(0.03)
-            await asyncio.sleep(1)
-            await santet_msg.edit("✅ انجام شد 🥴")
-        except Exception as e:
-            logger.error(f"santet: {e}")
-        return
-    if cmd == 'hack':
-        try:
-            await msg.delete()
-        except Exception:
-            pass
-        try:
-            hack_msg = await manager.client.send_message(query.message.chat_id, "💻")
-            await asyncio.sleep(2)
-            await hack_msg.edit("User online: True\nTelegram access: True\nRead Storage: True")
-            await asyncio.sleep(2)
-            await hack_msg.edit("Hacking... 0%\n[░░░░░░░░░░░░░░░░░░░░]")
-            await asyncio.sleep(2)
-            await hack_msg.edit("Hacking... 25%\n[█████░░░░░░░░░░░░░░░]")
-            await asyncio.sleep(2)
-            await hack_msg.edit("Hacking... 50%\n[██████████░░░░░░░░░░]")
-            await asyncio.sleep(2)
-            await hack_msg.edit("Hacking... 75%\n[███████████████░░░░░]")
-            await asyncio.sleep(2)
-            await hack_msg.edit("Hacking... 100%\n[████████████████████]")
-            await asyncio.sleep(2)
-            await hack_msg.edit("✅ هک کامل شد")
-        except Exception as e:
-            await msg.edit_text(f"❌ خطا: {e}")
-        return
+    # advanced_heart / love / santet / hack — در پایین با _anim_target یکجا هندل می‌شوند
     
     if cmd == 'user_panel_help':
         try:
@@ -8152,21 +8188,93 @@ async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         await msg.edit_text("🎵 دستور اهنگ\n\nبرای جستجو و پخش آهنگ از فرمت زیر استفاده کنید:\n\n`.اهنگ [نام آهنگ]`\n\nمثال: `.اهنگ مهدیار احمدی`")
         return
     
+    # هدف انیمیشن/اکشن: اگر پنل‌کاربر باز باشد → پیوی همان کاربر، وگرنه همین چت
+    _panel_tgt = panel_lock_targets.get(user_id) or panel_lock_targets.get(str(user_id))
+    def _anim_target():
+        if _panel_tgt:
+            return int(_panel_tgt)
+        return chat_id or (query.message.chat_id if query.message else user_id)
+
     if cmd == 'heart':
-        try:
-            if msg: await msg.delete()
-        except Exception:
-            pass
-        target_chat = chat_id or (query.message.chat_id if query.message else user_id)
+        target_chat = _anim_target()
+        await query.answer(f"❤️ قلب → {target_chat}", show_alert=False)
         asyncio.create_task(manager.heart_animation(target_chat))
         return
     if cmd == 'moon':
+        target_chat = _anim_target()
+        await query.answer(f"🌙 ماه → {target_chat}", show_alert=False)
+        asyncio.create_task(manager.moon_animation(target_chat))
+        return
+    if cmd in ('advanced_heart', 'love', 'santet', 'hack'):
+        target_chat = _anim_target()
+        await query.answer(f"✨ {cmd} → {target_chat}", show_alert=False)
         try:
-            if msg: await msg.delete()
+            if cmd == 'advanced_heart':
+                m = await manager.client.send_message(target_chat, '❤️')
+                await advanced_heart_animation(m)
+            elif cmd == 'love':
+                m = await manager.client.send_message(target_chat, '💝')
+                await advanced_heart_animation(m)
+            elif cmd == 'santet':
+                santet_msg = await manager.client.send_message(target_chat, '🕯️')
+                for i in range(0, 101, 5):
+                    bar_len = int(i / 100 * 20)
+                    bar = '█' * bar_len + '░' * (20 - bar_len)
+                    await santet_msg.edit(f'🕯️ {i}% [{bar}]')
+                    await asyncio.sleep(0.05)
+                await santet_msg.edit('✅ انجام شد 🥴')
+            elif cmd == 'hack':
+                hack_msg = await manager.client.send_message(target_chat, '💻')
+                for step in [
+                    'User online: True\nTelegram access: True',
+                    'Hacking... 25%\n[█████░░░░░░░░░░░░░░░]',
+                    'Hacking... 50%\n[██████████░░░░░░░░░░]',
+                    'Hacking... 75%\n[███████████████░░░░░]',
+                    'Hacking... 100%\n[████████████████████]',
+                    '✅ هک کامل شد',
+                ]:
+                    await asyncio.sleep(1.2)
+                    await hack_msg.edit(step)
+        except Exception as e:
+            logger.error(f'anim {cmd}: {e}')
+        return
+
+    # اکشن‌های مستقیم از منو (act_تایپ و ...)
+    if cmd.startswith('act_'):
+        action_name = cmd[4:]  # بعد از act_
+        target_chat = _anim_target()
+        try:
+            ok = await manager.start_action(target_chat, action_name)
+            if ok:
+                await query.answer(f"✅ اکشن {action_name} → {target_chat}", show_alert=False)
+            else:
+                await query.answer(f"❌ اکشن نامعتبر: {action_name}", show_alert=True)
+        except Exception as e:
+            logger.error(f'act_: {e}')
+            try:
+                await query.answer(f"خطا: {str(e)[:80]}", show_alert=True)
+            except Exception:
+                pass
+        return
+    if cmd == 'action_off':
+        target_chat = _anim_target()
+        try:
+            stopped = await manager.stop_action(target_chat)
+            await query.answer(f"⏹️ اکشن {stopped or ''} خاموش شد", show_alert=False)
+        except Exception as e:
+            logger.error(f'action_off: {e}')
+        return
+    if cmd == 'action_list':
+        active = getattr(manager, 'active_actions', {}) or {}
+        if active:
+            lines = [f"• {cid}: {name}" for cid, name in active.items()]
+            txt = "📋 اکشن‌های فعال:\n" + "\n".join(lines)
+        else:
+            txt = "📭 هیچ اکشنی فعال نیست"
+        try:
+            await context.bot.send_message(chat_id=user_id, text=txt)
         except Exception:
             pass
-        target_chat = chat_id or (query.message.chat_id if query.message else user_id)
-        asyncio.create_task(manager.moon_animation(target_chat))
         return
     
     if cmd == 'enemy':
@@ -8624,9 +8732,20 @@ async def panel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.delete()
     except Exception:
         pass
-    name = user.full_name or user.first_name or "User"
-    for ch in ('_', '*', '`', '['):
-        name = name.replace(ch, ' ')
+    name = None
+    try:
+        name = db.get_current_name(str(user_id)) or db.get_original_name(str(user_id))
+    except Exception:
+        name = None
+    if not name:
+        name = user.full_name or user.first_name or "User"
+    name = clean_display_name(name)
+    # پنل اصلی → هدف پنل‌کاربر را پاک کن تا انیمیشن/اکشن به چت فعلی برود
+    try:
+        panel_lock_targets.pop(user_id, None)
+        panel_lock_targets.pop(str(user_id), None)
+    except Exception:
+        pass
     keyboard = get_main_panel_keyboard(user_id)
     # دانلود آواتار
     avatar_path = None
