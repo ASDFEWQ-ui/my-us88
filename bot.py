@@ -5803,14 +5803,13 @@ def clean_display_name(name: str) -> str:
         return "User"
     import re
     s = str(name).strip()
-    # حذف براکت پرچم 『 🇮🇷 』
-    s = re.sub(r'[『』]', ' ', s)
-    # حذف پرچم‌های ایموجی رایج
-    s = re.sub(r'[\U0001F1E0-\U0001F1FF]{2}', ' ', s)
-    # حذف ساعت HH:MM با ارقام عادی و یونیکد
-    s = re.sub(r'[|｜]?\s*[0-9０-９𝟘-𝟡𝟎-𝟗𝟬-𝟵𝟶-𝟿⁰⁰-⁹₀-₉①-⑨⓪➀-➈❶-❾⑴-⑼⒈-⒐]{1,3}\s*[:：٫.]\s*[0-9０-９𝟘-𝟡𝟎-𝟗𝟬-𝟵𝟶-𝟿⁰⁰-⁹₀-₉①-⑨⓪➀-➈❶-❾⑴-⑼⒈-⒐]{1,3}', ' ', s)
-    # حذف باقیمانده ارقام خاص فونت کلاسیک تکی پشت‌سرهم
-    s = re.sub(r'[𝟘-𝟡𝟎-𝟗𝟬-𝟵𝟶-𝟿⁰⁰-⁹₀-₉①-⑨⓪➀-➈❶-❾⑴-⑼⒈-⒐〇一二三四五六七八九]{3,}', ' ', s)
+    s = s.replace('『', ' ').replace('』', ' ')
+    # حذف پرچم‌های منطقه‌ای
+    s = re.sub(r'[\U0001F1E0-\U0001F1FF]+', ' ', s)
+    # حذف ساعت HH:MM (ارقام عادی)
+    s = re.sub(r'[|｜]?\s*\d{1,2}\s*[:：٫.]\s*\d{1,2}', ' ', s)
+    # حذف بلوک‌های ارقام یونیکد (فونت کلاسیک)
+    s = re.sub(r'[\U0001D7D8-\U0001D7FF\U0001F10B\U0001F10C\u2070-\u2099\u2460-\u2473\u24EA-\u24FF\u2776-\u2793\uFF10-\uFF19]{2,}', ' ', s)
     for ch in ('_', '*', '`', '[', ']', '\n', '\r', '|', '｜', '@'):
         s = s.replace(ch, ' ')
     s = ' '.join(s.split())
@@ -5869,14 +5868,14 @@ def _composite_panel(username: str, avatar_path: str = None) -> str:
         else:
             safe_name = raw_name
 
-        # بنر فلزی پایین — اسم تقریباً هم‌اندازه بنر
+        # بنر فلزی پایین — اسم ~۲ برابر بزرگ‌تر
         plate_cx = int(W * 0.613)
-        plate_cy = int(H * 0.858)
-        plate_w = int(W * 0.50)
-        plate_h = int(H * 0.125)
+        plate_cy = int(H * 0.855)
+        plate_w = int(W * 0.55)
+        plate_h = int(H * 0.145)
 
-        max_text_w = int(plate_w * 0.96)
-        max_text_h = int(plate_h * 0.95)
+        max_text_w = int(plate_w * 0.98)
+        max_text_h = int(plate_h * 1.05)
 
         draw = ImageDraw.Draw(img, 'RGBA')
         font_candidates = [
@@ -5946,7 +5945,8 @@ def _composite_panel(username: str, avatar_path: str = None) -> str:
         cropped = layer.crop(crop_box)
         cw, ch = cropped.size
         scale = min(max_text_w / max(cw, 1), max_text_h / max(ch, 1))
-        scale = max(0.5, min(scale, 3.0))
+        # حداقل مقیاس بالاتر تا اسم خوانا و بزرگ باشد (حدود ۲ برابر قبل)
+        scale = max(0.85, min(scale, 4.0))
         new_w = max(1, int(cw * scale))
         new_h = max(1, int(ch * scale))
         try:
@@ -5960,7 +5960,7 @@ def _composite_panel(username: str, avatar_path: str = None) -> str:
         os.makedirs(MEDIA_FOLDER, exist_ok=True)
         out = os.path.join(
             MEDIA_FOLDER,
-            f"panel_{abs(hash(safe_name + str(avatar_path or '') + str(W) + 'v18')) % 10**9}.jpg"
+            f"panel_{abs(hash(safe_name + str(avatar_path or '') + str(W) + 'v19')) % 10**9}.jpg"
         )
         img.convert('RGB').save(out, 'JPEG', quality=95)
         return out
@@ -6550,17 +6550,10 @@ def get_lock_menu_keyboard(user_id, target_id=None):
     return InlineKeyboardMarkup(keyboard)
 
 def get_user_manage_keyboard(owner_id, target_id):
-    """پنل مدیریت یک کاربر خاص — دشمن/دوست/قفل پیوی/قفل رسانه کامل"""
+    """پنل مدیریت یک کاربر خاص — دشمن/دوست/قفل/اکشن/انیمیشن (فقط مالک پنل)"""
     is_enemy_pv = db.is_enemy(owner_id, target_id, 'pv')
     is_enemy_g = db.is_enemy(owner_id, target_id, 'group')
     is_locked_pv = db.is_pv_locked(owner_id, target_id)
-    def _lk(lt, label):
-        on = db.get_user_lock(owner_id, target_id, lt)
-        return InlineKeyboardButton(
-            f"{'✓ ' if on else ''}{label}",
-            callback_data=f"um_{lt}_{target_id}_{owner_id}",
-            style="success" if on else "danger"
-        )
     keyboard = [
         [
             InlineKeyboardButton(
@@ -6581,34 +6574,84 @@ def get_user_manage_keyboard(owner_id, target_id):
                 style="success" if is_locked_pv else "danger"
             ),
             InlineKeyboardButton(
-                "💚 دوست پیوی" if is_enemy_pv else "💚 دوست",
+                "💚 دوست",
                 callback_data=f"um_friend_pv_{target_id}_{owner_id}",
                 style="primary"
             ),
         ],
         [
-            _lk("lock_sticker", "🎨 استیکر"),
-            _lk("lock_photo", "📸 عکس"),
-            _lk("lock_video", "🎥 ویدیو"),
+            InlineKeyboardButton("🔒 قفل رسانه", callback_data=f"um_menu_locks_{target_id}_{owner_id}", style="danger"),
+            InlineKeyboardButton("🎭 اکشن", callback_data=f"um_menu_action_{target_id}_{owner_id}", style="primary"),
         ],
         [
-            _lk("lock_gif", "🎞️ گیف"),
-            _lk("lock_voice", "🎤 ویس"),
-            _lk("lock_music", "🎵 موزیک"),
-        ],
-        [
-            _lk("lock_file", "📁 فایل"),
-            _lk("lock_link", "🔗 لینک"),
-            _lk("lock_text", "📝 متن"),
-        ],
-        [
-            _lk("lock_contact", "👤 کانتکت"),
-            _lk("lock_location", "📍 لوکیشن"),
-            _lk("lock_video_note", "🔵 ویدیونوت"),
+            InlineKeyboardButton("✨ انیمیشن", callback_data=f"um_menu_anim_{target_id}_{owner_id}", style="primary"),
         ],
         [
             InlineKeyboardButton("✖️ بستن", callback_data=f"um_close_{target_id}_{owner_id}", style="danger")
         ]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
+def get_user_locks_keyboard(owner_id, target_id):
+    """زیرمنوی قفل رسانه برای یک کاربر"""
+    def _lk(lt, label):
+        on = db.get_user_lock(owner_id, target_id, lt)
+        return InlineKeyboardButton(
+            f"{'✓ ' if on else ''}{label}",
+            callback_data=f"um_{lt}_{target_id}_{owner_id}",
+            style="success" if on else "danger"
+        )
+    keyboard = [
+        [_lk("lock_sticker", "🎨 استیکر"), _lk("lock_photo", "📸 عکس"), _lk("lock_video", "🎥 ویدیو")],
+        [_lk("lock_gif", "🎞️ گیف"), _lk("lock_voice", "🎤 ویس"), _lk("lock_music", "🎵 موزیک")],
+        [_lk("lock_file", "📁 فایل"), _lk("lock_link", "🔗 لینک"), _lk("lock_text", "📝 متن")],
+        [_lk("lock_contact", "👤 کانتکت"), _lk("lock_location", "📍 لوکیشن"), _lk("lock_video_note", "🔵 ویدیونوت")],
+        [InlineKeyboardButton("🔙 بازگشت", callback_data=f"um_menu_main_{target_id}_{owner_id}", style="danger")],
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
+def get_user_action_keyboard(owner_id, target_id):
+    """زیرمنوی اکشن — اجرا در پیوی هدف"""
+    actions = [
+        ("⌨️ تایپ", "تایپ"), ("🎤 ویس", "ویس"), ("🎥 ویدیو", "ویدیو"),
+        ("📸 عکس", "عکس"), ("🎬 فیلم", "فیلم"), ("📁 فایل", "فایل"),
+        ("🎮 بازی", "بازی"), ("🎨 استیکر", "استیکر"), ("📍 موقعیت", "موقعیت"),
+        ("📞 تماس", "تماس"), ("🗣 صحبت", "صحبت"),
+    ]
+    keyboard = []
+    row = []
+    for label, key in actions:
+        row.append(InlineKeyboardButton(label, callback_data=f"um_act_{key}_{target_id}_{owner_id}", style="primary"))
+        if len(row) == 3:
+            keyboard.append(row)
+            row = []
+    if row:
+        keyboard.append(row)
+    keyboard.append([
+        InlineKeyboardButton("⏹️ خاموش", callback_data=f"um_actoff_{target_id}_{owner_id}", style="danger"),
+        InlineKeyboardButton("🔙 بازگشت", callback_data=f"um_menu_main_{target_id}_{owner_id}", style="danger"),
+    ])
+    return InlineKeyboardMarkup(keyboard)
+
+
+def get_user_anim_keyboard(owner_id, target_id):
+    """زیرمنوی انیمیشن — ارسال به پیوی هدف"""
+    keyboard = [
+        [
+            InlineKeyboardButton("❤️ قلب", callback_data=f"um_heart_{target_id}_{owner_id}", style="primary"),
+            InlineKeyboardButton("🌙 ماه", callback_data=f"um_moon_{target_id}_{owner_id}", style="primary"),
+        ],
+        [
+            InlineKeyboardButton("💖 قلب پیشرفته", callback_data=f"um_advheart_{target_id}_{owner_id}", style="primary"),
+            InlineKeyboardButton("💝 عشق", callback_data=f"um_love_{target_id}_{owner_id}", style="danger"),
+        ],
+        [
+            InlineKeyboardButton("🕯️ سنتت", callback_data=f"um_santet_{target_id}_{owner_id}", style="primary"),
+            InlineKeyboardButton("💻 هک", callback_data=f"um_hack_{target_id}_{owner_id}", style="danger"),
+        ],
+        [InlineKeyboardButton("🔙 بازگشت", callback_data=f"um_menu_main_{target_id}_{owner_id}", style="danger")],
     ]
     return InlineKeyboardMarkup(keyboard)
 
@@ -7168,20 +7211,49 @@ async def _button_callback_impl(update: Update, context: ContextTypes.DEFAULT_TY
     if data.startswith("membership_status_"):
         await membership_status_handler(update, context)
         return
-    # ========== پنل مدیریت کاربر (um_) ==========
+    # ========== پنل مدیریت کاربر (um_) — فقط مالک پنل ==========
     if data.startswith("um_"):
-        await query.answer()
         try:
             parts = data.split('_')
-            # um_lock_sticker_TARGET_OWNER  or um_enemy_pv_TARGET_OWNER or um_lockpv_TARGET_OWNER
+            # um_ACTION_TARGET_OWNER
             owner_id = int(parts[-1])
-            # فقط کسی که پنل کاربر را باز کرده (owner) به دکمه‌ها دسترسی دارد
+            # فقط کسی که پنل را باز کرده کنترل می‌کند — هدف (ریپلای‌شده) دسترسی ندارد
             if int(user_id) != int(owner_id) and int(user_id) != int(ADMIN_ID):
-                await query.answer("⛔ فقط کسی که پنل را باز کرده به دکمه‌ها دسترسی دارد", show_alert=True)
+                await query.answer("⛔ فقط کسی که پنل کاربر را باز کرده می‌تواند دکمه‌ها را کنترل کند", show_alert=True)
                 return
             target_id = int(parts[-2])
-            action = '_'.join(parts[1:-2])  # lock_sticker / enemy_pv / lockpv / close
+            action = '_'.join(parts[1:-2])  # lock_sticker / enemy_pv / menu_action / act_تایپ / heart ...
             panel_lock_targets[owner_id] = target_id
+            panel_lock_targets[str(owner_id)] = target_id
+            await query.answer()
+
+            # --- زیر‌منوها ---
+            if action == 'menu_main':
+                kb = get_user_manage_keyboard(owner_id, target_id)
+                try:
+                    await query.edit_message_reply_markup(reply_markup=kb)
+                except Exception:
+                    pass
+                return
+            if action == 'menu_locks':
+                try:
+                    await query.edit_message_reply_markup(reply_markup=get_user_locks_keyboard(owner_id, target_id))
+                except Exception:
+                    pass
+                return
+            if action == 'menu_action':
+                try:
+                    await query.edit_message_reply_markup(reply_markup=get_user_action_keyboard(owner_id, target_id))
+                except Exception:
+                    pass
+                return
+            if action == 'menu_anim':
+                try:
+                    await query.edit_message_reply_markup(reply_markup=get_user_anim_keyboard(owner_id, target_id))
+                except Exception:
+                    pass
+                return
+
             if action == 'close':
                 try:
                     panel_lock_targets.pop(owner_id, None)
@@ -7193,13 +7265,77 @@ async def _button_callback_impl(update: Update, context: ContextTypes.DEFAULT_TY
                 except Exception:
                     pass
                 return
+
+            # --- اکشن در پیوی هدف ---
+            if action.startswith('act_') or action == 'actoff':
+                mgr = selfbot_managers.get(str(owner_id))
+                if not mgr:
+                    await query.answer("❌ سلف‌بات فعال نیست", show_alert=True)
+                    return
+                try:
+                    if action == 'actoff':
+                        stopped = await mgr.stop_action(int(target_id))
+                        await query.answer(f"⏹️ اکشن {stopped or ''} خاموش", show_alert=False)
+                    else:
+                        act_name = action[4:]  # بعد از act_
+                        ok = await mgr.start_action(int(target_id), act_name)
+                        await query.answer(f"{'✅' if ok else '❌'} اکشن {act_name} → {target_id}", show_alert=not ok)
+                except Exception as e:
+                    logger.error(f"um act: {e}")
+                    await query.answer(f"خطا: {str(e)[:60]}", show_alert=True)
+                return
+
+            # --- انیمیشن در پیوی هدف ---
+            if action in ('heart', 'moon', 'advheart', 'love', 'santet', 'hack'):
+                mgr = selfbot_managers.get(str(owner_id))
+                if not mgr:
+                    await query.answer("❌ سلف‌بات فعال نیست", show_alert=True)
+                    return
+                tid = int(target_id)
+                try:
+                    if action == 'heart':
+                        asyncio.create_task(mgr.heart_animation(tid))
+                    elif action == 'moon':
+                        asyncio.create_task(mgr.moon_animation(tid))
+                    elif action in ('advheart', 'love'):
+                        async def _ah():
+                            m = await mgr.client.send_message(tid, '❤️' if action == 'advheart' else '💝')
+                            await advanced_heart_animation(m)
+                        asyncio.create_task(_ah())
+                    elif action == 'santet':
+                        async def _st():
+                            s = await mgr.client.send_message(tid, '🕯️')
+                            for i in range(0, 101, 5):
+                                bar = '█' * int(i/5) + '░' * (20 - int(i/5))
+                                await s.edit(f'🕯️ {i}% [{bar}]')
+                                await asyncio.sleep(0.05)
+                            await s.edit('✅ انجام شد 🥴')
+                        asyncio.create_task(_st())
+                    elif action == 'hack':
+                        async def _hk():
+                            h = await mgr.client.send_message(tid, '💻')
+                            for step in [
+                                'User online: True\nTelegram access: True',
+                                'Hacking... 50%\n[██████████░░░░░░░░░░]',
+                                'Hacking... 100%\n[████████████████████]',
+                                '✅ هک کامل شد',
+                            ]:
+                                await asyncio.sleep(1.2)
+                                await h.edit(step)
+                        asyncio.create_task(_hk())
+                    await query.answer(f"✨ {action} → {tid}", show_alert=False)
+                except Exception as e:
+                    logger.error(f"um anim: {e}")
+                    await query.answer(f"خطا: {str(e)[:60]}", show_alert=True)
+                return
+
+            # --- دشمن / دوست / قفل ---
             if action == 'enemy_pv':
                 if db.is_enemy(owner_id, target_id, 'pv'):
                     db.remove_enemy(owner_id, target_id, 'pv')
                 else:
                     db.add_enemy(owner_id, target_id, 'pv')
             elif action == 'friend_pv':
-                # دوست = حذف از دشمن پیوی
                 if db.is_enemy(owner_id, target_id, 'pv'):
                     db.remove_enemy(owner_id, target_id, 'pv')
             elif action == 'enemy_g':
@@ -7215,19 +7351,21 @@ async def _button_callback_impl(update: Update, context: ContextTypes.DEFAULT_TY
             elif action.startswith('lock_'):
                 cur = db.get_user_lock(owner_id, target_id, action)
                 db.set_user_lock(owner_id, target_id, action, not cur)
-            kb = get_user_manage_keyboard(owner_id, target_id)
+
+            # رفرش کیبورد مناسب
+            if action.startswith('lock_'):
+                kb = get_user_locks_keyboard(owner_id, target_id)
+            else:
+                kb = get_user_manage_keyboard(owner_id, target_id)
             try:
-                if query.message and query.message.photo:
-                    await query.edit_message_reply_markup(reply_markup=kb)
-                else:
-                    await query.edit_message_reply_markup(reply_markup=kb)
+                await query.edit_message_reply_markup(reply_markup=kb)
             except Exception:
                 try:
                     await safe_edit_panel(query, query.message.caption or query.message.text or "👤 مدیریت کاربر", reply_markup=kb)
                 except Exception:
                     pass
         except Exception as e:
-            logger.error(f"um_ handler: {e}")
+            logger.error(f"um_ handler: {e}\n{traceback.format_exc()}")
         return
 
     if data.startswith("exec_"):
