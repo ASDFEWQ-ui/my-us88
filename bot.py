@@ -2889,37 +2889,71 @@ class SelfBotManager:
             try:
                 img = Image.new('RGBA', (512, 512), (0, 0, 0, 0))
                 draw = ImageDraw.Draw(img)
-                try:
-                    font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 48)
-                except Exception:
+                font_paths = [
+                    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+                    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+                    "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
+                    "font.ttf",
+                ]
+                # فونت خیلی بزرگ‌تر — اندازه خودکار بر اساس طول متن
+                base_size = 140 if len(text) <= 8 else (110 if len(text) <= 16 else (90 if len(text) <= 30 else 72))
+                font = None
+                for fp in font_paths:
                     try:
-                        font = ImageFont.truetype("font.ttf", 48)
+                        font = ImageFont.truetype(fp, base_size)
+                        break
                     except Exception:
-                        font = ImageFont.load_default()
-                # wrap text
+                        continue
+                if font is None:
+                    font = ImageFont.load_default()
+                # wrap text با عرض بیشتر
                 words = text.split()
                 lines, cur = [], ""
+                max_w = 480
                 for w in words:
                     test = (cur + " " + w).strip()
                     bbox = draw.textbbox((0, 0), test, font=font)
-                    if bbox[2] - bbox[0] > 480 and cur:
+                    if bbox[2] - bbox[0] > max_w and cur:
                         lines.append(cur)
                         cur = w
                     else:
                         cur = test
                 if cur:
                     lines.append(cur)
-                total_h = 0
-                line_sizes = []
-                for ln in lines:
-                    bbox = draw.textbbox((0, 0), ln, font=font)
-                    line_sizes.append((bbox[2]-bbox[0], bbox[3]-bbox[1]))
-                    total_h += bbox[3]-bbox[1] + 8
+                if not lines:
+                    lines = [text[:40]]
+                # اگر خیلی بلند بود فونت را کوچک‌تر کن
+                for _ in range(8):
+                    total_h = 0
+                    line_sizes = []
+                    too_wide = False
+                    for ln in lines:
+                        bbox = draw.textbbox((0, 0), ln, font=font)
+                        lw, lh = bbox[2]-bbox[0], bbox[3]-bbox[1]
+                        line_sizes.append((lw, lh))
+                        total_h += lh + 12
+                        if lw > max_w:
+                            too_wide = True
+                    if total_h <= 480 and not too_wide:
+                        break
+                    base_size = max(36, base_size - 12)
+                    font = None
+                    for fp in font_paths:
+                        try:
+                            font = ImageFont.truetype(fp, base_size)
+                            break
+                        except Exception:
+                            continue
+                    if font is None:
+                        font = ImageFont.load_default()
+                        break
                 y = max(0, (512 - total_h) // 2)
                 for ln, (lw, lh) in zip(lines, line_sizes):
                     x = (512 - lw) // 2
+                    # سایه برای خوانایی
+                    draw.text((x+3, y+3), ln, fill=(0, 0, 0, 180), font=font)
                     draw.text((x, y), ln, fill=(255, 255, 255, 255), font=font)
-                    y += lh + 8
+                    y += lh + 12
                 output = BytesIO()
                 img.save(output, format='WEBP')
                 output.name = "sticker.webp"
@@ -4236,7 +4270,48 @@ class SelfBotManager:
                 api = f"https://api.telegram.org/bot{BOT_TOKEN}"
                 sent = False
 
-                # اولویت ۱: همین چت با Bot API (عکس + دکمه‌ها)
+                # ۱) همیشه عکس را با سلف در همین چت بفرست (مثل پنل اصلی)
+                try:
+                    if photo_path and os.path.exists(photo_path):
+                        await self.client.send_file(chat_id, photo_path, caption=caption)
+                    else:
+                        await self.client.send_message(chat_id, caption)
+                    sent = True
+                    logger.info(f"پنل کاربر photo → same chat telethon OK")
+                except Exception as e:
+                    logger.warning(f"پنل کاربر telethon photo: {e}")
+
+                # ۲) دکمه‌ها را با Bot API به پیوی صاحب سلف بفرست
+                try:
+                    dest = int(self.user_id)
+                    if photo_path and os.path.exists(photo_path):
+                        with open(photo_path, 'rb') as f:
+                            r = requests.post(
+                                f"{api}/sendPhoto",
+                                data={
+                                    'chat_id': dest,
+                                    'caption': caption,
+                                    'reply_markup': json.dumps(kb_dict),
+                                },
+                                files={'photo': ('panel.jpg', f, 'image/jpeg')},
+                                timeout=30
+                            )
+                    else:
+                        r = requests.post(
+                            f"{api}/sendMessage",
+                            json={'chat_id': dest, 'text': caption, 'reply_markup': kb_dict},
+                            timeout=15
+                        )
+                    body = r.json() if r.content else {}
+                    if r.status_code == 200 and body.get('ok'):
+                        sent = True
+                        logger.info(f"پنل کاربر buttons → PV bot OK")
+                    else:
+                        logger.warning(f"پنل کاربر PV bot fail: {r.text[:200]}")
+                except Exception as e:
+                    logger.warning(f"پنل کاربر PV bot: {e}")
+
+                # ۳) تلاش برای ارسال عکس+دکمه در همین چت با Bot API (اگر ربات عضو باشد)
                 try:
                     if photo_path and os.path.exists(photo_path):
                         with open(photo_path, 'rb') as f:
@@ -4248,81 +4323,14 @@ class SelfBotManager:
                                     'reply_markup': json.dumps(kb_dict),
                                 },
                                 files={'photo': ('panel.jpg', f, 'image/jpeg')},
-                                timeout=30
-                            )
-                    else:
-                        r = requests.post(
-                            f"{api}/sendMessage",
-                            json={'chat_id': chat_id, 'text': caption, 'reply_markup': kb_dict},
-                            timeout=15
-                        )
-                    body = r.json() if r.content else {}
-                    if r.status_code == 200 and body.get('ok'):
-                        sent = True
-                        logger.info(f"پنل کاربر → same chat bot OK chat={chat_id}")
-                    else:
-                        logger.warning(f"پنل کاربر same chat fail: {r.text[:200]}")
-                except Exception as e:
-                    logger.warning(f"پنل کاربر same chat: {e}")
-
-                # اولویت ۲: پیوی کاربر با ربات (اگر در گروه ربات عضو نباشد)
-                if not sent:
-                    try:
-                        dest = int(self.user_id)
-                        if photo_path and os.path.exists(photo_path):
-                            with open(photo_path, 'rb') as f:
-                                r = requests.post(
-                                    f"{api}/sendPhoto",
-                                    data={
-                                        'chat_id': dest,
-                                        'caption': caption,
-                                        'reply_markup': json.dumps(kb_dict),
-                                    },
-                                    files={'photo': ('panel.jpg', f, 'image/jpeg')},
-                                    timeout=30
-                                )
-                        else:
-                            r = requests.post(
-                                f"{api}/sendMessage",
-                                json={'chat_id': dest, 'text': caption, 'reply_markup': kb_dict},
-                                timeout=15
+                                timeout=20
                             )
                         body = r.json() if r.content else {}
                         if r.status_code == 200 and body.get('ok'):
                             sent = True
-                            # در همین چت هم عکس بدون دکمه بفرست تا کاربر ببیند
-                            try:
-                                if photo_path and os.path.exists(photo_path):
-                                    await self.client.send_file(chat_id, photo_path, caption=caption)
-                            except Exception:
-                                pass
-                            logger.info(f"پنل کاربر → PV bot OK + photo in chat")
-                    except Exception as e:
-                        logger.warning(f"پنل کاربر PV fallback: {e}")
-
-                # اولویت ۳: فقط سلف عکس در همین چت
-                if not sent:
-                    try:
-                        if photo_path and os.path.exists(photo_path):
-                            await self.client.send_file(chat_id, photo_path, caption=caption)
-                        else:
-                            await self.client.send_message(chat_id, caption)
-                        sent = True
-                        # دکمه‌ها به پیوی ربات
-                        try:
-                            requests.post(
-                                f"{api}/sendMessage",
-                                json={
-                                    'chat_id': int(self.user_id),
-                                    'text': f"👤 مدیریت {name}\nID: {tid}\nاز دکمه‌ها استفاده کن:",
-                                    'reply_markup': kb_dict
-                                },
-                                timeout=12
-                            )
-                        except Exception:
-                            pass
-                    except Exception as e:
-                        logger.error(f"پنل کاربر telethon: {e}")
+                            logger.info(f"پنل کاربر → same chat bot OK")
+                except Exception as e:
+                    logger.debug(f"پنل کاربر same chat bot: {e}")
 
                 for path in (avatar_path, photo_path):
                     try:
@@ -4337,7 +4345,10 @@ class SelfBotManager:
                 except Exception:
                     pass
                 if not sent:
-                    await self.client.send_message(chat_id, "❌ ارسال پنل کاربر ناموفق بود. ربات را استارت کنید.")
+                    try:
+                        await self.client.send_message(chat_id, "❌ ارسال پنل کاربر ناموفق بود. ربات را با /start استارت کنید.")
+                    except Exception:
+                        pass
             except Exception as e:
                 logger.error(f"پنل کاربر: {e}\n{traceback.format_exc()}")
                 try:
@@ -5696,8 +5707,8 @@ def _load_panel_base_image():
 def _composite_panel(username: str, avatar_path: str = None) -> str:
     """
     قالب تمیز VROOM:
-    - عکس داخل دایره سیاه
-    - اسم دقیقاً وسط بنر فلزی پایین
+    - عکس داخل دایره سیاه (کمی پایین‌تر برای مرکز دقیق)
+    - اسم خیلی بزرگ وسط بنر فلزی پایین
     """
     try:
         from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageFilter
@@ -5706,9 +5717,10 @@ def _composite_panel(username: str, avatar_path: str = None) -> str:
             return None
         W, H = img.size
 
+        # مرکز دایره — کمی پایین‌تر تا داخل دایره سیاه دقیق بنشیند
         cx = int(round(W * 0.6146))
-        cy = int(round(H * 0.4770))
-        radius = int(round(min(W, H) * 0.255))
+        cy = int(round(H * 0.4920))
+        radius = int(round(min(W, H) * 0.248))
         size = radius * 2
 
         if avatar_path and os.path.exists(avatar_path):
@@ -5725,7 +5737,7 @@ def _composite_panel(username: str, avatar_path: str = None) -> str:
                 mask = Image.new('L', (size, size), 0)
                 ImageDraw.Draw(mask).ellipse((0, 0, size - 1, size - 1), fill=255)
                 try:
-                    mask = mask.filter(ImageFilter.GaussianBlur(radius=0.7))
+                    mask = mask.filter(ImageFilter.GaussianBlur(radius=0.6))
                 except Exception:
                     pass
                 avatar.putalpha(mask)
@@ -5733,20 +5745,19 @@ def _composite_panel(username: str, avatar_path: str = None) -> str:
             except Exception as e:
                 logger.debug(f"avatar composite: {e}")
 
-        safe_name = (username or "User")[:22]
+        safe_name = (username or "User")[:28]
         for ch in ('_', '*', '`', '[', ']', '\n', '\r', '|'):
             safe_name = safe_name.replace(ch, ' ')
         safe_name = ' '.join(safe_name.split()) or "User"
 
-        # بنر فلزی پایین — هم‌مرکز با دایره پورتال
-        # روی قالب 1344×784: حدود x=560..1080  y=662..728
-        plate_cx = int(W * 0.613)   # زیر مرکز دایره
-        plate_cy = int(H * 0.872)   # وسط واقعی بنر فلزی
-        plate_w = int(W * 0.36)     # عرض مفید داخل قاب
-        plate_h = int(H * 0.065)    # ارتفاع مفید داخل قاب
+        # بنر فلزی پایین — هم‌مرکز با دایره
+        plate_cx = int(W * 0.613)
+        plate_cy = int(H * 0.868)
+        plate_w = int(W * 0.40)
+        plate_h = int(H * 0.090)
 
-        max_text_w = int(plate_w * 0.95)
-        max_text_h = int(plate_h * 0.92)
+        max_text_w = int(plate_w * 0.98)
+        max_text_h = int(plate_h * 0.98)
 
         draw = ImageDraw.Draw(img, 'RGBA')
         font_candidates = [
@@ -5757,11 +5768,12 @@ def _composite_panel(username: str, avatar_path: str = None) -> str:
         ]
         font = ImageFont.load_default()
         tw = th = 0
-        for fs in range(max(int(plate_h * 1.15), 24), 12, -1):
+        # اسم خیلی بزرگ‌تر
+        for fs in range(max(int(plate_h * 1.55), 72), 18, -1):
             f = None
-            for path in font_candidates:
+            for fpath in font_candidates:
                 try:
-                    f = ImageFont.truetype(path, fs)
+                    f = ImageFont.truetype(fpath, fs)
                     break
                 except Exception:
                     continue
@@ -5776,30 +5788,29 @@ def _composite_panel(username: str, avatar_path: str = None) -> str:
                 font = f
                 break
 
-        # مرکز دقیق افقی و عمودی داخل بنر
         text_x = plate_cx - tw // 2
-        # baseline فونت را با مرکز بنر هم‌تراز کن
         try:
             ascent, descent = font.getmetrics()
-            text_y = plate_cy - (ascent - descent) // 2 - 5
+            text_y = plate_cy - (ascent - descent) // 2 - 4
         except Exception:
             text_y = plate_cy - th // 2 - 2
 
         for ox, oy, col in (
-            (3, 3, (0, 4, 10, 160)),
-            (2, 2, (20, 60, 120, 120)),
-            (1, 1, (60, 140, 220, 90)),
-            (0, -1, (100, 200, 255, 50)),
+            (4, 4, (0, 4, 10, 180)),
+            (3, 3, (10, 40, 90, 140)),
+            (2, 2, (30, 90, 180, 110)),
+            (1, 1, (70, 160, 240, 90)),
+            (0, -1, (120, 210, 255, 55)),
         ):
             draw.text((text_x + ox, text_y + oy), safe_name, font=font, fill=col)
-        draw.text((text_x, text_y), safe_name, font=font, fill=(175, 245, 255, 255))
+        draw.text((text_x, text_y), safe_name, font=font, fill=(190, 250, 255, 255))
 
         os.makedirs(MEDIA_FOLDER, exist_ok=True)
         out = os.path.join(
             MEDIA_FOLDER,
-            f"panel_{abs(hash(safe_name + str(avatar_path or '') + str(W) + 'v12')) % 10**9}.jpg"
+            f"panel_{abs(hash(safe_name + str(avatar_path or '') + str(W) + 'v15')) % 10**9}.jpg"
         )
-        img.convert('RGB').save(out, 'JPEG', quality=94)
+        img.convert('RGB').save(out, 'JPEG', quality=95)
         return out
     except Exception as e:
         logger.error(f"_composite_panel: {e}\n{traceback.format_exc()}")
@@ -5819,7 +5830,8 @@ def render_user_panel_image(username: str, avatar_path: str = None) -> str:
 async def get_panel_photo_file_id(bot, user, force_refresh=False):
     """ساخت تصویر پنل با آواتار کاربر و آپلود برای گرفتن file_id (اینلاین یک‌پیامه)"""
     user_id = user.id
-    if not force_refresh and user_id in panel_photo_cache:
+    # همیشه تازه بساز تا اگر اسم/پروفیل عوض شد به‌روز باشد
+    if not force_refresh and user_id in panel_photo_cache and False:
         return panel_photo_cache[user_id]
     name = getattr(user, 'full_name', None) or getattr(user, 'first_name', None) or "User"
     for ch in ('_', '*', '`', '['):
@@ -5991,11 +6003,10 @@ def get_time_menu_keyboard(user_id):
     flag_enabled = settings.get('flag_enabled', False)
     keyboard = [
         [
-            InlineKeyboardButton(f"🕐 تایم روشن {'' if not time_enabled else '✓'}", callback_data=f"exec_time_on_{user_id}", style="success" if not time_enabled else "primary"),
-            InlineKeyboardButton(f"🏳️ تایمر پرچم {'' if not flag_enabled else '✓'}", callback_data=f"exec_time_flag_{user_id}", style="success" if not flag_enabled else "primary")
+            InlineKeyboardButton(f"🕐 تایم {'✓ روشن' if time_enabled else 'خاموش'}", callback_data=f"exec_time_on_{user_id}" if not time_enabled else f"exec_time_off_{user_id}", style="success" if time_enabled else "primary"),
+            InlineKeyboardButton(f"🏳️ پرچم {'✓ روشن' if flag_enabled else 'خاموش'}", callback_data=f"exec_time_flag_{user_id}", style="success" if flag_enabled else "primary")
         ],
         [
-            InlineKeyboardButton(f"🚫 تایم خاموش {'' if time_enabled else '✓'}", callback_data=f"exec_time_off_{user_id}", style="danger" if time_enabled else "primary"),
             InlineKeyboardButton("📅 تقویم", callback_data=f"exec_calendar_{user_id}", style="primary")
         ],
         [
@@ -8657,23 +8668,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("✖ درخواست شما رد شده است")
         return
     if user_data.get('self_active') in (1, "1", True) or user_data.get('self_active'):
-        # باز کردن پنل با تصویر + دکمه‌ها یکجا
+        # عضو فعال: فقط دستور پنل را جواب بده — هیچ پیام اضافی نفرست
         if text.strip() in ('پنل', 'panel', '/panel', '.پنل'):
             await panel_command(update, context)
             return
+        # اگر سلف روشن نیست، بی‌صدا روشن کن (بدون پیام)
         if user_id_str not in selfbot_managers:
             session_file = user_data.get('session_file')
             if session_file and os.path.exists(session_file):
-                manager = SelfBotManager(user_id_str)
-                if await manager.start(session_file):
-                    selfbot_managers[user_id_str] = manager
-                    await update.message.reply_text("🚀 سلف‌بات فعال شد\nبرای پنل بنویس: پنل")
-                else:
-                    await update.message.reply_text("⚠️ خطا در شروع سلف‌بات")
-            else:
-                await update.message.reply_text("⚠️ فایل سشن یافت نشد — از پنل ادمین بکاپ را دوباره آپلود کنید")
-        else:
-            await update.message.reply_text("✅ سلف‌بات در حال اجراست\nبرای پنل بنویس: پنل")
+                try:
+                    manager = SelfBotManager(user_id_str)
+                    if await manager.start(session_file):
+                        selfbot_managers[user_id_str] = manager
+                except Exception as e:
+                    logger.error(f"silent start selfbot {user_id_str}: {e}")
+        # هیچ پیامی نفرست — کاربر آزاد است تا /start بزند
         return
     step = user_data.get('step')
     if step == 'get_phone':
