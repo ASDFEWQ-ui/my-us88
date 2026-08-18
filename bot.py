@@ -5868,14 +5868,14 @@ def _composite_panel(username: str, avatar_path: str = None) -> str:
         else:
             safe_name = raw_name
 
-        # بنر فلزی پایین — اسم ~۲ برابر بزرگ‌تر
+        # بنر فلزی پایین — اسم حدود ۲ برابر بزرگ‌تر (پر کردن کل بنر)
         plate_cx = int(W * 0.613)
-        plate_cy = int(H * 0.855)
-        plate_w = int(W * 0.55)
-        plate_h = int(H * 0.145)
+        plate_cy = int(H * 0.848)
+        plate_w = int(W * 0.58)
+        plate_h = int(H * 0.175)
 
-        max_text_w = int(plate_w * 0.98)
-        max_text_h = int(plate_h * 1.05)
+        max_text_w = int(plate_w * 0.99)
+        max_text_h = int(plate_h * 1.15)
 
         draw = ImageDraw.Draw(img, 'RGBA')
         font_candidates = [
@@ -5895,7 +5895,7 @@ def _composite_panel(username: str, avatar_path: str = None) -> str:
         font = None
         tw = th = 0
         chosen_fs = 40
-        for fs in range(220, 28, -2):
+        for fs in range(280, 36, -2):
             f = None
             for fpath in font_candidates:
                 try:
@@ -5944,23 +5944,23 @@ def _composite_panel(username: str, avatar_path: str = None) -> str:
         )
         cropped = layer.crop(crop_box)
         cw, ch = cropped.size
+        # پر کردن تقریباً کامل بنر (حدود ۲× بزرگ‌تر از قبل)
         scale = min(max_text_w / max(cw, 1), max_text_h / max(ch, 1))
-        # حداقل مقیاس بالاتر تا اسم خوانا و بزرگ باشد (حدود ۲ برابر قبل)
-        scale = max(0.85, min(scale, 4.0))
-        new_w = max(1, int(cw * scale))
-        new_h = max(1, int(ch * scale))
+        scale = max(scale * 1.05, scale)
+        new_w = max(1, min(int(cw * scale), max_text_w, W - 20))
+        new_h = max(1, min(int(ch * scale), max_text_h, H - 20))
         try:
             cropped = cropped.resize((new_w, new_h), Image.Resampling.LANCZOS)
         except Exception:
             cropped = cropped.resize((new_w, new_h), Image.LANCZOS)
-        paste_x = plate_cx - new_w // 2
-        paste_y = plate_cy - new_h // 2
+        paste_x = max(0, min(plate_cx - new_w // 2, W - new_w))
+        paste_y = max(0, min(plate_cy - new_h // 2, H - new_h))
         img.paste(cropped, (paste_x, paste_y), cropped)
 
         os.makedirs(MEDIA_FOLDER, exist_ok=True)
         out = os.path.join(
             MEDIA_FOLDER,
-            f"panel_{abs(hash(safe_name + str(avatar_path or '') + str(W) + 'v19')) % 10**9}.jpg"
+            f"panel_{abs(hash(safe_name + str(avatar_path or '') + str(W) + 'v21')) % 10**9}.jpg"
         )
         img.convert('RGB').save(out, 'JPEG', quality=95)
         return out
@@ -7217,11 +7217,15 @@ async def _button_callback_impl(update: Update, context: ContextTypes.DEFAULT_TY
             parts = data.split('_')
             # um_ACTION_TARGET_OWNER
             owner_id = int(parts[-1])
-            # فقط کسی که پنل را باز کرده کنترل می‌کند — هدف (ریپلای‌شده) دسترسی ندارد
+            # فقط کسی که پنل را باز کرده کنترل می‌کند
             if int(user_id) != int(owner_id) and int(user_id) != int(ADMIN_ID):
                 await query.answer("⛔ فقط کسی که پنل کاربر را باز کرده می‌تواند دکمه‌ها را کنترل کند", show_alert=True)
                 return
             target_id = int(parts[-2])
+            # هدف ریپلای‌شده (کاربر مقابل) هم حق کلیک ندارد
+            if int(user_id) == int(target_id):
+                await query.answer("⛔ شما هدف این پنل هستید و به دکمه‌ها دسترسی ندارید", show_alert=True)
+                return
             action = '_'.join(parts[1:-2])  # lock_sticker / enemy_pv / menu_action / act_تایپ / heart ...
             panel_lock_targets[owner_id] = target_id
             panel_lock_targets[str(owner_id)] = target_id
