@@ -304,6 +304,7 @@ MOONS = ["🌒", "🌓", "🌔", "🌕", "🌖", "🌗", "🌘", "🌑"]
 
 media_cache = {}
 panel_photo_cache = {}  # user_id -> photo file_id برای اینلاین یک‌پیامه
+user_panel_cache = {}  # owner_id -> pending user panel data
 message_cache = {}
 user_inline_messages = {}
 
@@ -2895,8 +2896,8 @@ class SelfBotManager:
                     "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
                     "font.ttf",
                 ]
-                # فونت خیلی بزرگ‌تر — اندازه خودکار بر اساس طول متن
-                base_size = 140 if len(text) <= 8 else (110 if len(text) <= 16 else (90 if len(text) <= 30 else 72))
+                # فونت خیلی بزرگ — پر کردن کل استیکر ۵۱۲
+                base_size = 200 if len(text) <= 6 else (170 if len(text) <= 12 else (140 if len(text) <= 20 else (110 if len(text) <= 35 else 88)))
                 font = None
                 for fp in font_paths:
                     try:
@@ -2936,7 +2937,7 @@ class SelfBotManager:
                             too_wide = True
                     if total_h <= 480 and not too_wide:
                         break
-                    base_size = max(36, base_size - 12)
+                    base_size = max(48, base_size - 10)
                     font = None
                     for fp in font_paths:
                         try:
@@ -4242,7 +4243,7 @@ class SelfBotManager:
                 is_pv_locked = db.is_pv_locked(self.user_id, tid)
                 caption = (
                     f"👤 {name}\n"
-                    f"🆔 {tid}\n"
+                    f"🆔 `{tid}`\n"
                     f"📎 {uname}\n"
                     f"🤖 ربات: {is_bot} | ⭐ پرمیوم: {is_premium}\n"
                     f"━━━━━━━━━━━━━━\n"
@@ -4269,77 +4270,94 @@ class SelfBotManager:
                 }
                 api = f"https://api.telegram.org/bot{BOT_TOKEN}"
                 sent = False
+                dest_owner = int(self.user_id)
 
-                # ۱) همیشه عکس را با سلف در همین چت بفرست (مثل پنل اصلی)
+                # ذخیره برای اینلاین (مثل پنل اصلی)
                 try:
-                    if photo_path and os.path.exists(photo_path):
-                        await self.client.send_file(chat_id, photo_path, caption=caption)
-                    else:
-                        await self.client.send_message(chat_id, caption)
-                    sent = True
-                    logger.info(f"پنل کاربر photo → same chat telethon OK")
-                except Exception as e:
-                    logger.warning(f"پنل کاربر telethon photo: {e}")
+                    user_panel_cache[str(self.user_id)] = {
+                        'target_id': tid,
+                        'name': name,
+                        'caption': caption,
+                        'photo_path': photo_path,
+                        'avatar_path': avatar_path,
+                        'ts': time.time(),
+                    }
+                except Exception:
+                    pass
 
-                # ۲) دکمه‌ها را با Bot API به پیوی صاحب سلف بفرست
+                # ۱) مثل پنل اصلی: اینلاین هلپر → عکس+دکمه در همین چت
                 try:
-                    dest = int(self.user_id)
-                    if photo_path and os.path.exists(photo_path):
-                        with open(photo_path, 'rb') as f:
-                            r = requests.post(
-                                f"{api}/sendPhoto",
-                                data={
-                                    'chat_id': dest,
-                                    'caption': caption,
-                                    'reply_markup': json.dumps(kb_dict),
-                                },
-                                files={'photo': ('panel.jpg', f, 'image/jpeg')},
-                                timeout=30
-                            )
-                    else:
-                        r = requests.post(
-                            f"{api}/sendMessage",
-                            json={'chat_id': dest, 'text': caption, 'reply_markup': kb_dict},
-                            timeout=15
-                        )
-                    body = r.json() if r.content else {}
-                    if r.status_code == 200 and body.get('ok'):
+                    bot_username = BOT_USERNAME.replace('@', '')
+                    results = await self.client.inline_query(bot_username, f'up_{tid}')
+                    if results:
+                        await results[0].click(chat_id)
                         sent = True
-                        logger.info(f"پنل کاربر buttons → PV bot OK")
-                    else:
-                        logger.warning(f"پنل کاربر PV bot fail: {r.text[:200]}")
+                        logger.info("پنل کاربر → inline click OK")
                 except Exception as e:
-                    logger.warning(f"پنل کاربر PV bot: {e}")
+                    logger.warning(f"پنل کاربر inline: {e}")
 
-                # ۳) تلاش برای ارسال عکس+دکمه در همین چت با Bot API (اگر ربات عضو باشد)
-                try:
-                    if photo_path and os.path.exists(photo_path):
+                # ۲) ارسال با Bot API به همین چت (اگر ربات عضو باشد)
+                if not sent and photo_path and os.path.exists(photo_path):
+                    try:
                         with open(photo_path, 'rb') as f:
                             r = requests.post(
                                 f"{api}/sendPhoto",
                                 data={
                                     'chat_id': chat_id,
                                     'caption': caption,
+                                    'parse_mode': 'Markdown',
                                     'reply_markup': json.dumps(kb_dict),
                                 },
                                 files={'photo': ('panel.jpg', f, 'image/jpeg')},
-                                timeout=20
+                                timeout=25
                             )
                         body = r.json() if r.content else {}
                         if r.status_code == 200 and body.get('ok'):
                             sent = True
-                            logger.info(f"پنل کاربر → same chat bot OK")
-                except Exception as e:
-                    logger.debug(f"پنل کاربر same chat bot: {e}")
+                            logger.info("پنل کاربر → same chat bot OK")
+                    except Exception as e:
+                        logger.warning(f"پنل کاربر same chat bot: {e}")
 
-                for path in (avatar_path, photo_path):
+                # ۳) عکس با سلف در همین چت + دکمه‌ها در پیوی ربات
+                if not sent:
                     try:
-                        if path and os.path.exists(path):
-                            bn = os.path.basename(path)
-                            if bn.startswith('uav_') or bn.startswith('panel_') or bn.startswith('up_'):
-                                os.remove(path)
-                    except Exception:
-                        pass
+                        if photo_path and os.path.exists(photo_path):
+                            await self.client.send_file(chat_id, photo_path, caption=caption)
+                        else:
+                            await self.client.send_message(chat_id, caption)
+                        sent = True
+                        logger.info("پنل کاربر photo → telethon same chat")
+                    except Exception as e:
+                        logger.warning(f"پنل کاربر telethon: {e}")
+                    try:
+                        if photo_path and os.path.exists(photo_path):
+                            with open(photo_path, 'rb') as f:
+                                r = requests.post(
+                                    f"{api}/sendPhoto",
+                                    data={
+                                        'chat_id': dest_owner,
+                                        'caption': caption,
+                                        'parse_mode': 'Markdown',
+                                        'reply_markup': json.dumps(kb_dict),
+                                    },
+                                    files={'photo': ('panel.jpg', f, 'image/jpeg')},
+                                    timeout=30
+                                )
+                        else:
+                            r = requests.post(
+                                f"{api}/sendMessage",
+                                json={'chat_id': dest_owner, 'text': caption, 'reply_markup': kb_dict, 'parse_mode': 'Markdown'},
+                                timeout=15
+                            )
+                        body = r.json() if r.content else {}
+                        if r.status_code == 200 and body.get('ok'):
+                            sent = True
+                            logger.info("پنل کاربر buttons → owner PV OK")
+                        else:
+                            logger.warning(f"پنل کاربر PV fail: {getattr(r,'text','')[:200]}")
+                    except Exception as e:
+                        logger.warning(f"پنل کاربر PV bot: {e}")
+
                 try:
                     await event.delete()
                 except Exception:
@@ -5582,12 +5600,85 @@ async def inline_panel(update:Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer(results, cache_time=0, is_personal=True)
         return
     
+    qtext = (query.query or '').strip()
+    # پنل کاربر: up_TARGETID
+    if qtext.startswith('up_'):
+        results = []
+        try:
+            tid = int(qtext.split('_', 1)[1])
+            cache = user_panel_cache.get(str(user_id)) or {}
+            name = cache.get('name') or f'User {tid}'
+            caption = cache.get('caption') or f'👤 {name}\n🆔 {tid}'
+            photo_path = cache.get('photo_path')
+            keyboard = get_user_manage_keyboard(user_id, tid)
+            file_id = None
+            # اگر عکس از قبل ساخته شده، آپلود و file_id بگیر
+            if photo_path and os.path.exists(photo_path):
+                try:
+                    with open(photo_path, 'rb') as f:
+                        msg = await context.bot.send_photo(chat_id=ADMIN_ID, photo=f)
+                    file_id = msg.photo[-1].file_id
+                    try:
+                        await context.bot.delete_message(chat_id=ADMIN_ID, message_id=msg.message_id)
+                    except Exception:
+                        pass
+                except Exception as e:
+                    logger.warning(f'inline up upload: {e}')
+            if not file_id:
+                # ساخت تازه با آواتار از کش
+                av = cache.get('avatar_path')
+                photo_path2 = render_user_panel_image(name, av if av and os.path.exists(av) else None)
+                if photo_path2 and os.path.exists(photo_path2):
+                    try:
+                        with open(photo_path2, 'rb') as f:
+                            msg = await context.bot.send_photo(chat_id=ADMIN_ID, photo=f)
+                        file_id = msg.photo[-1].file_id
+                        try:
+                            await context.bot.delete_message(chat_id=ADMIN_ID, message_id=msg.message_id)
+                        except Exception:
+                            pass
+                    except Exception as e:
+                        logger.warning(f'inline up render upload: {e}')
+            if file_id:
+                results.append(
+                    InlineQueryResultCachedPhoto(
+                        id=str(uuid.uuid4()),
+                        photo_file_id=file_id,
+                        title=f'👤 پنل {name}',
+                        description='مدیریت کاربر',
+                        caption=caption,
+                        reply_markup=keyboard
+                    )
+                )
+            else:
+                results.append(
+                    InlineQueryResultArticle(
+                        id=str(uuid.uuid4()),
+                        title=f'👤 پنل {name}',
+                        description='مدیریت کاربر',
+                        input_message_content=InputTextMessageContent(caption),
+                        reply_markup=keyboard
+                    )
+                )
+        except Exception as e:
+            logger.error(f'inline up_: {e}')
+            results.append(
+                InlineQueryResultArticle(
+                    id=str(uuid.uuid4()),
+                    title='❌ خطا',
+                    description=str(e)[:80],
+                    input_message_content=InputTextMessageContent(f'❌ خطا در پنل کاربر: {str(e)[:100]}')
+                )
+            )
+        await query.answer(results, cache_time=0, is_personal=True)
+        return
+
     if not query.query:
         name = get_main_panel_text(query.from_user)
         keyboard = get_main_panel_keyboard(user_id)
         results = []
-        # یک پیام واحد: عکس + نام + دکمه‌ها
-        file_id = await get_panel_photo_file_id(context.bot, query.from_user)
+        # یک پیام واحد: عکس + نام + دکمه‌ها (همیشه تازه — اسم/پروفیل به‌روز)
+        file_id = await get_panel_photo_file_id(context.bot, query.from_user, force_refresh=True)
         if file_id:
             results.append(
                 InlineQueryResultCachedPhoto(
@@ -5717,10 +5808,10 @@ def _composite_panel(username: str, avatar_path: str = None) -> str:
             return None
         W, H = img.size
 
-        # مرکز دایره — کمی پایین‌تر تا داخل دایره سیاه دقیق بنشیند
+        # مرکز دایره — کمی پایین‌تر تا دقیق داخل دایره سیاه
         cx = int(round(W * 0.6146))
-        cy = int(round(H * 0.4920))
-        radius = int(round(min(W, H) * 0.248))
+        cy = int(round(H * 0.5050))
+        radius = int(round(min(W, H) * 0.242))
         size = radius * 2
 
         if avatar_path and os.path.exists(avatar_path):
@@ -5752,12 +5843,12 @@ def _composite_panel(username: str, avatar_path: str = None) -> str:
 
         # بنر فلزی پایین — هم‌مرکز با دایره
         plate_cx = int(W * 0.613)
-        plate_cy = int(H * 0.868)
-        plate_w = int(W * 0.40)
-        plate_h = int(H * 0.090)
+        plate_cy = int(H * 0.862)
+        plate_w = int(W * 0.42)
+        plate_h = int(H * 0.105)
 
-        max_text_w = int(plate_w * 0.98)
-        max_text_h = int(plate_h * 0.98)
+        max_text_w = int(plate_w * 0.96)
+        max_text_h = int(plate_h * 1.15)
 
         draw = ImageDraw.Draw(img, 'RGBA')
         font_candidates = [
@@ -5768,8 +5859,8 @@ def _composite_panel(username: str, avatar_path: str = None) -> str:
         ]
         font = ImageFont.load_default()
         tw = th = 0
-        # اسم خیلی بزرگ‌تر
-        for fs in range(max(int(plate_h * 1.55), 72), 18, -1):
+        # اسم خیلی بزرگ داخل بنر
+        for fs in range(max(int(plate_h * 2.2), 96), 22, -1):
             f = None
             for fpath in font_candidates:
                 try:
@@ -5808,7 +5899,7 @@ def _composite_panel(username: str, avatar_path: str = None) -> str:
         os.makedirs(MEDIA_FOLDER, exist_ok=True)
         out = os.path.join(
             MEDIA_FOLDER,
-            f"panel_{abs(hash(safe_name + str(avatar_path or '') + str(W) + 'v15')) % 10**9}.jpg"
+            f"panel_{abs(hash(safe_name + str(avatar_path or '') + str(W) + 'v16')) % 10**9}.jpg"
         )
         img.convert('RGB').save(out, 'JPEG', quality=95)
         return out
@@ -6213,6 +6304,8 @@ def get_info_menu_keyboard(user_id):
     return InlineKeyboardMarkup(keyboard)
 
 def get_message_menu_keyboard(user_id):
+    settings = db.get_selfbot_settings(user_id)
+    auto_on = bool(settings.get('auto_seen', settings.get('autosend', 0)))
     keyboard = [
         [
             InlineKeyboardButton("🧹 حذف کامل", callback_data=f"exec_delete_all_{user_id}", style="danger"),
@@ -6220,10 +6313,10 @@ def get_message_menu_keyboard(user_id):
         ],
         [
             InlineKeyboardButton("🗑️ حذف ۱۰", callback_data=f"exec_delete_10_{user_id}", style="danger"),
-            InlineKeyboardButton("👁️ فعال اتوسین", callback_data=f"exec_autosend_on_{user_id}", style="success")
+            InlineKeyboardButton(f"{'✓ ' if auto_on else ''}👁️ فعال اتوسین", callback_data=f"exec_autosend_on_{user_id}", style="success" if auto_on else "primary")
         ],
         [
-            InlineKeyboardButton("🙈 غیرفعال اتوسین", callback_data=f"exec_autosend_off_{user_id}", style="danger")
+            InlineKeyboardButton(f"{'✓ ' if not auto_on else ''}🙈 غیرفعال اتوسین", callback_data=f"exec_autosend_off_{user_id}", style="danger" if not auto_on else "primary")
         ],
         [
             InlineKeyboardButton("📸 اسکرین‌شات", callback_data=f"exec_screenshot_{user_id}", style="primary")
@@ -6239,6 +6332,8 @@ def get_message_menu_keyboard(user_id):
     return InlineKeyboardMarkup(keyboard)
 
 def get_tools_menu_keyboard(user_id):
+    settings = db.get_selfbot_settings(user_id)
+    self_on = bool(settings.get('selfbot_enabled', 1))
     keyboard = [
         [
             InlineKeyboardButton("📊 امار گپ", callback_data=f"exec_stats_{user_id}", style="primary"),
@@ -6249,8 +6344,8 @@ def get_tools_menu_keyboard(user_id):
             InlineKeyboardButton("📌 پین", callback_data=f"exec_pin_{user_id}", style="primary")
         ],
         [
-            InlineKeyboardButton("🤖 سلف روشن", callback_data=f"exec_self_on_{user_id}", style="success"),
-            InlineKeyboardButton("⛔ سلف خاموش", callback_data=f"exec_self_off_{user_id}", style="danger")
+            InlineKeyboardButton(f"{'✓ ' if self_on else ''}🤖 سلف روشن", callback_data=f"exec_self_on_{user_id}", style="success" if self_on else "primary"),
+            InlineKeyboardButton(f"{'✓ ' if not self_on else ''}⛔ سلف خاموش", callback_data=f"exec_self_off_{user_id}", style="danger" if not self_on else "primary")
         ],
         [
             InlineKeyboardButton("🎨 ساخت استیکر", callback_data=f"exec_make_sticker_{user_id}", style="success")
@@ -6269,8 +6364,8 @@ def get_monshi_menu_keyboard(user_id):
     status = monshi_data['status']
     keyboard = [
         [
-            InlineKeyboardButton(f"🤖 منشی {'' if not status else '✓'}", callback_data=f"exec_monshi_on_{user_id}", style="success" if not status else "primary"),
-            InlineKeyboardButton(f"⛔ خاموش {'' if status else '✓'}", callback_data=f"exec_monshi_off_{user_id}", style="danger" if status else "primary")
+            InlineKeyboardButton(f"{'✓ ' if status else ''}🤖 منشی روشن", callback_data=f"exec_monshi_on_{user_id}", style="success" if status else "primary"),
+            InlineKeyboardButton(f"{'✓ ' if not status else ''}⛔ منشی خاموش", callback_data=f"exec_monshi_off_{user_id}", style="danger" if not status else "primary")
         ],
         [
             InlineKeyboardButton("📝 افزودن پاسخ", callback_data=f"exec_add_answer_{user_id}", style="success"),
