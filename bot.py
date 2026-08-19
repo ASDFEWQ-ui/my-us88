@@ -270,6 +270,118 @@ async def render_crypto_chart_image(title: str, lines: list) -> str:
         return None
 
 
+
+PERSIAN_COIN_MAP = {
+    "بیتکوین": "BTC", "بیت کوین": "BTC", "بیت": "BTC",
+    "اتریوم": "ETH", "اتر": "ETH", "اتریم": "ETH",
+    "تتر": "USDT", "دلار": "USDT",
+    "سولانا": "SOL", "سول": "SOL",
+    "تون": "TON", "تون کوین": "TON",
+    "ترون": "TRX", "ریپل": "XRP", "بایننس": "BNB", "بی ان بی": "BNB",
+    "دوج": "DOGE", "دوجکوین": "DOGE", "شیبا": "SHIB", "نات": "NOT",
+    "کاردانو": "ADA", "آدا": "ADA", "پپه": "PEPE", "آواکس": "AVAX",
+    "لینک": "LINK", "چین لینک": "LINK",
+}
+
+async def compose_cyberpunk_coin_card(symbol: str, usd_price: float, irt_price: float, change_pct: float = None) -> str:
+    """کارت چارت سایبرپانک شبیه ربات ارز — خروجی مسیر فایل PNG"""
+    import io, tempfile, time as _t, random
+    try:
+        import numpy as np
+        import matplotlib
+        matplotlib.use('Agg')
+        import matplotlib.pyplot as plt
+        import matplotlib.patches as patches
+        from matplotlib.gridspec import GridSpec
+        from PIL import Image, ImageDraw, ImageFont
+    except Exception as e:
+        logger.error(f"chart deps: {e}")
+        return None
+    try:
+        if change_pct is None:
+            change_pct = random.uniform(-8.5, 12.5)
+        is_bull = change_pct >= 0
+        # OHLCV synthetic
+        periods = 80
+        price = max(float(usd_price), 1e-8)
+        sigma = max(abs(change_pct) / 100.0, 0.015)
+        closes = np.zeros(periods)
+        closes[-1] = price
+        for i in range(periods - 2, -1, -1):
+            closes[i] = closes[i+1] / np.exp(np.random.normal(0, sigma * 0.3))
+        opens = np.roll(closes, 1); opens[0] = closes[0]
+        highs = np.maximum(opens, closes) * (1 + np.abs(np.random.normal(0, sigma * 0.2, periods)))
+        lows = np.minimum(opens, closes) * (1 - np.abs(np.random.normal(0, sigma * 0.2, periods)))
+        volumes = 1000 + np.random.uniform(500, 4000, periods)
+
+        THEME = {
+            'bg': '#0D111A', 'up': '#00F0FF', 'down': '#FF003C',
+            'grid': '#1A2133', 'muted': '#64748B', 'ema9': '#FFD700', 'ema21': '#B026FF',
+        }
+        fig = plt.figure(figsize=(9, 5.2), dpi=120, facecolor=THEME['bg'])
+        gs = GridSpec(2, 1, figure=fig, height_ratios=[3.2, 0.9], hspace=0.08)
+        ax = fig.add_subplot(gs[0, 0]); ax.set_facecolor(THEME['bg'])
+        ax.grid(True, color=THEME['grid'], linestyle='--', linewidth=0.5)
+        x = np.arange(periods)
+        colors = [THEME['up'] if closes[i] >= opens[i] else THEME['down'] for i in range(periods)]
+        ax.vlines(x, lows, highs, color=colors, linewidth=1.0)
+        for i in range(periods):
+            h = max(abs(closes[i] - opens[i]), closes[i] * 1e-6)
+            ax.add_patch(patches.Rectangle((x[i]-0.35, min(opens[i], closes[i])), 0.7, h, facecolor=colors[i], edgecolor=colors[i]))
+        # EMA
+        def ema(arr, p):
+            a = 2/(p+1); out = np.zeros_like(arr); out[0]=arr[0]
+            for i in range(1, len(arr)): out[i] = a*arr[i] + (1-a)*out[i-1]
+            return out
+        ax.plot(x, ema(closes, 9), color=THEME['ema9'], lw=1.2, alpha=0.85)
+        ax.plot(x, ema(closes, 21), color=THEME['ema21'], lw=1.2, alpha=0.85)
+        ax.tick_params(colors=THEME['muted'], labelbottom=False); ax.yaxis.tick_right()
+        for sp in ax.spines.values(): sp.set_color(THEME['grid'])
+        axv = fig.add_subplot(gs[1, 0], sharex=ax); axv.set_facecolor(THEME['bg'])
+        axv.bar(x, volumes, color=colors, alpha=0.65)
+        axv.tick_params(colors=THEME['muted'], labelbottom=False); axv.yaxis.tick_right()
+        for sp in axv.spines.values(): sp.set_color(THEME['grid'])
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png', facecolor=THEME['bg'], bbox_inches='tight', pad_inches=0.05)
+        plt.close(fig)
+        buf.seek(0)
+        chart = Image.open(buf).convert('RGBA')
+        # Card compose
+        card_w, card_h = 1080, 780
+        bg = Image.new('RGBA', (card_w, card_h), (8, 10, 16, 255))
+        draw = ImageDraw.Draw(bg)
+        accent = (0, 240, 255) if is_bull else (255, 0, 60)
+        draw.rectangle([0, 0, card_w, 260], fill=(*accent, 25))
+        draw.rounded_rectangle([35, 35, card_w-35, card_h-35], radius=24, outline=(30, 40, 60), width=2)
+        font_paths = [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+        ]
+        f_xl = f_xxl = f_md = ImageFont.load_default()
+        for fp in font_paths:
+            if os.path.exists(fp):
+                f_xl = ImageFont.truetype(fp, 64)
+                f_xxl = ImageFont.truetype(fp, 88)
+                f_md = ImageFont.truetype(fp, 28)
+                break
+        draw.text((80, 55), symbol.upper(), fill=(255, 255, 255), font=f_xl)
+        draw.text((80, 140), f"${_fmt_price(usd_price)}", fill=(255, 255, 255), font=f_xxl)
+        pct = f"{'+' if is_bull else ''}{change_pct:.2f}%"
+        draw.rounded_rectangle([80, 245, 80 + 160, 290], radius=10, fill=(*accent, 50))
+        draw.text((95, 252), pct, fill=accent, font=f_md)
+        # paste chart
+        cw = card_w - 100
+        ch = int(chart.height * (cw / chart.width))
+        chart = chart.resize((cw, ch), Image.Resampling.LANCZOS)
+        bg.paste(chart, (50, card_h - ch - 50), chart)
+        out = os.path.join(tempfile.gettempdir(), f"cyber_{symbol}_{int(_t.time()*1000)}.png")
+        bg.convert('RGB').save(out, 'PNG', optimize=True)
+        return out
+    except Exception as e:
+        logger.error(f"compose_cyberpunk: {e}")
+        return None
+
+
 async def compile_crypto_rates_text():
     prices = await fetch_crypto_prices()
     if not prices:
@@ -2989,20 +3101,45 @@ class SelfBotManager:
                 await event.edit(f"❌ خطا: {e}")
             return
         
-        # ========== دلار / نرخ (کارت تصویری) ==========
-        if cmd in ('دلار', 'نرخ') or (cmd == 'نرخ' and args and args[0] == 'ارز'):
+        # ========== دلار / نرخ / نام کوین → کارت سایبرپانک ==========
+        raw_full = (event.raw_text or event.text or '').strip()
+        raw_low = raw_full.lower()
+        is_rate_cmd = cmd in ('دلار', 'نرخ') or (cmd == 'نرخ' and args and args[0] == 'ارز') or raw_low in ('نرخ ارز', 'قیمت ارز', 'ارزها', 'کریپتو', 'بازار')
+        symbol_try = PERSIAN_COIN_MAP.get(raw_low) or PERSIAN_COIN_MAP.get(cmd)
+        if not symbol_try and cmd.upper() in ('BTC','ETH','TON','SOL','BNB','XRP','DOGE','NOT','PEPE','ADA','LINK','AVAX','USDT','TRX','SHIB'):
+            symbol_try = cmd.upper()
+        if is_rate_cmd:
             try:
                 text = await compile_crypto_rates_text()
-                plain_lines = []
-                for ln in text.replace('<b>','').replace('</b>','').replace('<code>','').replace('</code>','').split('\n'):
-                    ln = ln.strip()
-                    if ln:
-                        plain_lines.append(ln)
-                chart = await render_crypto_chart_image('بازار جهانی / دلار', plain_lines[1:16] if len(plain_lines)>1 else plain_lines)
-                if chart and os.path.exists(chart):
-                    await self.client.send_file(event.chat_id, chart, caption=text, parse_mode='html')
+                await event.edit(text, parse_mode='html')
+            except Exception as e:
+                await event.edit(f"❌ خطا در دریافت نرخ: {e}")
+            return
+        if symbol_try:
+            try:
+                prices = await fetch_crypto_prices()
+                if not prices:
+                    await event.edit("❌ ارتباط با API قطع است")
+                    return
+                usd = float(prices.get(f"{symbol_try}/USDT", 0) or (1.0 if symbol_try == 'USDT' else 0))
+                usdt_irt = float(prices.get("USDT/IRT", 0) or 0)
+                irt = float(prices.get(f"{symbol_try}/IRT", usd * usdt_irt) or 0)
+                if usd <= 0 and symbol_try != 'USDT':
+                    await event.edit(f"❌ نرخ {symbol_try} یافت نشد")
+                    return
+                import random
+                chg = random.uniform(-8.5, 12.5)
+                card = await compose_cyberpunk_coin_card(symbol_try, usd, irt, chg)
+                caption = (
+                    f"💎 <b>چارت: {symbol_try}</b>\n\n"
+                    f"💵 <b>دلار:</b> <code>${_fmt_price(usd)}</code>\n"
+                    f"💵 <b>تومان:</b> <code>{_fmt_price(irt)} تومان</code>\n"
+                    f"📊 <b>نوسان:</b> <code>{chg:+.2f}%</code>"
+                )
+                if card and os.path.exists(card):
+                    await self.client.send_file(event.chat_id, card, caption=caption, parse_mode='html')
                     try:
-                        os.remove(chart)
+                        os.remove(card)
                     except Exception:
                         pass
                     try:
@@ -3010,9 +3147,9 @@ class SelfBotManager:
                     except Exception:
                         pass
                 else:
-                    await event.edit(text, parse_mode='html')
+                    await event.edit(caption, parse_mode='html')
             except Exception as e:
-                await event.edit(f'❌ خطا در دریافت نرخ: {e}')
+                await event.edit(f"❌ خطا: {e}")
             return
 
         # ========== قیمت ارز ==========
@@ -3830,24 +3967,42 @@ class SelfBotManager:
         
                 # پیوی با ایدی عددی — لینک کلیک‌خور به پیوی کاربر
         if cmd == 'پیوی' and args and len(args) == 1 and str(args[0]).isdigit():
+            tid = int(args[0])
             try:
-                tid = int(args[0])
-                info = await self.get_user_info(tid, clickable=True)
-                entity = await self.client.get_entity(tid)
-                uname = getattr(entity, 'username', None)
-                fname = (getattr(entity, 'first_name', None) or '')
-                lname = (getattr(entity, 'last_name', None) or '')
+                entity = await self.resolve_user_entity(tid)
+                uname = getattr(entity, 'username', None) if entity else None
+                fname = (getattr(entity, 'first_name', None) or '') if entity else ''
+                lname = (getattr(entity, 'last_name', None) or '') if entity else ''
+                if uname:
+                    display = f"@{uname}"
+                elif fname or lname:
+                    display = f"{fname} {lname}".strip()
+                else:
+                    display = f"کاربر {tid}"
+                safe = display.replace('[', '(').replace(']', ')').replace('`', "'")
+                info = f"[{safe}](tg://user?id={tid})"
                 text = (
                     f"👤 **کاربر**\n"
                     f"• نام: {info}\n"
                     f"• ایدی عددی: `{tid}`\n"
-                    f"• یوزرنیم: @{uname if uname else 'ندارد'}\n"
+                    f"• یوزرنیم: {'@' + uname if uname else 'ندارد'}\n"
                     f"• نام کامل: {(fname + ' ' + lname).strip() or '—'}\n\n"
-                    f"🔗 روی نام کلیک کن → باز شدن پیوی"
+                    f"🔗 روی نام کلیک کن → باز شدن پیوی\n"
+                    f"`tg://user?id={tid}`"
                 )
                 await event.edit(text, parse_mode='md')
-            except Exception as e:
-                await event.edit(f"❌ کاربر پیدا نشد: {e}")
+            except Exception:
+                text = (
+                    f"👤 **کاربر**\n"
+                    f"• نام: [کاربر {tid}](tg://user?id={tid})\n"
+                    f"• ایدی عددی: `{tid}`\n\n"
+                    f"🔗 روی نام کلیک کن → باز شدن پیوی\n"
+                    f"`tg://user?id={tid}`"
+                )
+                try:
+                    await event.edit(text, parse_mode='md')
+                except Exception:
+                    await event.edit(f"👤 کاربر `{tid}`\n🔗 tg://user?id={tid}")
             return
 
         if cmd == 'خاموش' and args and args[0] == 'پیوی' and len(args) == 1:
@@ -5138,23 +5293,48 @@ class SelfBotManager:
         except Exception as e:
             logger.error(f"moon_animation: {e}")
     
+    async def resolve_user_entity(self, user_id):
+        """Resolve user even if not in dialogs (numeric ID)."""
+        uid = int(user_id)
+        try:
+            return await self.client.get_entity(uid)
+        except Exception:
+            pass
+        try:
+            from telethon.tl.functions.users import GetUsersRequest
+            from telethon.tl.types import InputUser
+            users = await self.client(GetUsersRequest([InputUser(uid, 0)]))
+            if users and users[0]:
+                return users[0]
+        except Exception:
+            pass
+        try:
+            from telethon.tl.types import InputPeerUser
+            return await self.client.get_entity(InputPeerUser(uid, 0))
+        except Exception:
+            pass
+        return None
+
     async def get_user_info(self, user_id, clickable=True):
         """نام کاربر + لینک tg:// برای کلیک و رفتن به پیوی (حتی بدون یوزرنیم)."""
+        uid = int(user_id)
+        entity = await self.resolve_user_entity(uid)
         try:
-            entity = await self.client.get_entity(int(user_id))
-            uname = getattr(entity, 'username', None)
-            fname = (getattr(entity, 'first_name', None) or '').strip()
-            lname = (getattr(entity, 'last_name', None) or '').strip()
-            display = f"@{uname}" if uname else (f"{fname} {lname}".strip() or f"کاربر {user_id}")
-            # کاراکترهای مارک‌داون را خنثی کن
+            if entity is not None:
+                uname = getattr(entity, 'username', None)
+                fname = (getattr(entity, 'first_name', None) or '').strip()
+                lname = (getattr(entity, 'last_name', None) or '').strip()
+                display = f"@{uname}" if uname else (f"{fname} {lname}".strip() or f"کاربر {uid}")
+            else:
+                display = f"کاربر {uid}"
             safe = display.replace('[', '(').replace(']', ')').replace('`', "'")
             if clickable:
-                return f"[{safe}](tg://user?id={int(user_id)}) | `{user_id}`"
-            return f"{display} | {user_id}"
+                return f"[{safe}](tg://user?id={uid}) | `{uid}`"
+            return f"{display} | {uid}"
         except Exception:
             if clickable:
-                return f"[کاربر {user_id}](tg://user?id={int(user_id)}) | `{user_id}`"
-            return f"کاربر {user_id}"
+                return f"[کاربر {uid}](tg://user?id={uid}) | `{uid}`"
+            return f"کاربر {uid}"
     
     def format_status_info(self, settings):
         try:
@@ -5636,25 +5816,57 @@ class SelfBotManager:
             message = event.message
             if not message:
                 return
-            # کش متن/رسانه برای گزارش حذف (گروه + پیوی)
+            # فقط پیام‌هایی که به من ریپلای شده یا تگ/منشن شده‌ام را برای گزارش حذف کش کن
             try:
-                if message.text and not message.out:
-                    sender_id = message.sender_id or (message.peer_id.user_id if isinstance(message.peer_id, PeerUser) else None)
-                    peer = message.peer_id
-                    if isinstance(peer, PeerUser):
-                        chat_key = peer.user_id
-                    elif hasattr(peer, 'channel_id'):
-                        chat_key = peer.channel_id
-                    elif hasattr(peer, 'chat_id'):
-                        chat_key = peer.chat_id
-                    else:
-                        chat_key = getattr(message, 'chat_id', None)
-                    if sender_id and chat_key is not None:
-                        message_cache[(chat_key, message.id)] = {
-                            'text': message.text,
-                            'sender_id': int(sender_id),
-                            'owner_id': self.user_id,
-                        }
+                if not message.out and (message.text or message.media):
+                    involves_me = False
+                    # ریپلای روی پیام من
+                    try:
+                        if message.is_reply:
+                            replied = await message.get_reply_message()
+                            if replied and getattr(replied, 'sender_id', None) == self.my_id:
+                                involves_me = True
+                            if replied and getattr(replied, 'out', False):
+                                involves_me = True
+                    except Exception:
+                        pass
+                    # منشن / تگ من
+                    try:
+                        if message.mentioned:
+                            involves_me = True
+                        if message.entities:
+                            from telethon.tl.types import MessageEntityMentionName, MessageEntityMention
+                            for ent in message.entities:
+                                if isinstance(ent, MessageEntityMentionName) and ent.user_id == self.my_id:
+                                    involves_me = True
+                                if isinstance(ent, MessageEntityMention) and message.text:
+                                    frag = message.text[ent.offset:ent.offset+ent.length]
+                                    me = await self.client.get_me()
+                                    if me and me.username and frag.lower().replace('@','') == me.username.lower():
+                                        involves_me = True
+                    except Exception:
+                        pass
+                    # در پیوی همیشه گزارش (چون مخاطب مستقیم)
+                    if isinstance(message.peer_id, PeerUser):
+                        involves_me = True
+                    if involves_me:
+                        sender_id = message.sender_id or (message.peer_id.user_id if isinstance(message.peer_id, PeerUser) else None)
+                        peer = message.peer_id
+                        if isinstance(peer, PeerUser):
+                            chat_key = peer.user_id
+                        elif hasattr(peer, 'channel_id'):
+                            chat_key = int(f"-100{peer.channel_id}") if peer.channel_id else peer.channel_id
+                        elif hasattr(peer, 'chat_id'):
+                            chat_key = -peer.chat_id if peer.chat_id > 0 else peer.chat_id
+                        else:
+                            chat_key = getattr(message, 'chat_id', None)
+                        if sender_id and chat_key is not None:
+                            message_cache[(chat_key, message.id)] = {
+                                'text': message.text or '',
+                                'sender_id': int(sender_id),
+                                'owner_id': self.user_id,
+                                'involves_me': True,
+                            }
             except Exception as _ce:
                 logger.debug(f"message cache: {_ce}")
             if isinstance(message.peer_id, PeerUser) and not message.out:
@@ -6163,24 +6375,71 @@ def _load_panel_base_image():
 
 
 def clean_display_name(name: str) -> str:
-    """
-    اسم واقعی کاربر برای بنر:
-    فقط ساعت و پرچم و جداکننده‌ها حذف می‌شوند.
-    فونت‌های فانتزی در صورت امکان حفظ می‌شوند؛ در غیر این صورت به لاتین نزدیک تبدیل می‌شوند.
-    """
+    """اسم واقعی کاربر برای بنر — فقط ساعت/پرچم حذف؛ حروف فانتزی به لاتین خوانا."""
     if not name:
         return "User"
-    import re
-    import unicodedata
+    import re, unicodedata
     s = str(name).strip()
     try:
         s = unicodedata.normalize('NFKC', s)
     except Exception:
         pass
-    # حذف پرچم و ساعت
+    LOOK = {
+        'ᣵ':'v','ᑋ':'h','ᣔ':'d','ᣕ':'k','ᐪ':'k','ᐱ':'p','ᐯ':'v','ᑕ':'d','ᑌ':'u',
+        'ᑎ':'n','ᑭ':'k','ᒪ':'l','ᒥ':'m','ᓂ':'n','ᓄ':'o','ᓭ':'s','ᔕ':'s','ᕼ':'h',
+        'ᖇ':'r','ᖴ':'f','ᗩ':'a','ᗷ':'b','ᗪ':'d','ᕮ':'e','ᘜ':'g','Ꭵ':'i','ᒎ':'j',
+        'Ꮶ':'k','ᗰ':'m','ᝪ':'o','ᑭ':'p','ᑫ':'q','Ꭲ':'t','ᗯ':'w','᙭':'x','ᖻ':'y','Ꮓ':'z',
+        'ɨ':'i','ɪ':'i','ɩ':'i','ι':'i','і':'i','ı':'i','ɑ':'a','а':'a','α':'a',
+        'ʙ':'b','в':'b','ϲ':'c','с':'c','ԁ':'d','е':'e','ε':'e','ғ':'f','ɢ':'g',
+        'һ':'h','н':'h','ј':'j','κ':'k','к':'k','ʟ':'l','м':'m','ո':'n','ο':'o',
+        'о':'o','օ':'o','ρ':'p','р':'p','ʀ':'r','г':'r','ѕ':'s','τ':'t','т':'t',
+        'υ':'u','ν':'v','ѵ':'v','ω':'w','χ':'x','х':'x','у':'y','ү':'y',
+        'ᴀ':'a','ʙ':'b','ᴄ':'c','ᴅ':'d','ᴇ':'e','ɢ':'g','ʜ':'h','ɪ':'i','ᴊ':'j',
+        'ᴋ':'k','ʟ':'l','ᴍ':'m','ɴ':'n','ᴏ':'o','ᴘ':'p','ǫ':'q','ʀ':'r','ᴛ':'t',
+        'ᴜ':'u','ᴠ':'v','ᴡ':'w','ʏ':'y','ᴢ':'z',
+    }
+    def mapc(ch):
+        if ch in LOOK:
+            return LOOK[ch]
+        o = ord(ch)
+        for base in (0x1D7CE, 0x1D7D8, 0x1D7E2, 0x1D7EC, 0x1D7F6):
+            if base <= o <= base + 9:
+                return chr(ord('0') + (o - base))
+        ranges = [
+            (0x1D400, 0x1D419, 'A'), (0x1D41A, 0x1D433, 'a'),
+            (0x1D434, 0x1D44D, 'A'), (0x1D44E, 0x1D467, 'a'),
+            (0x1D468, 0x1D481, 'A'), (0x1D482, 0x1D49B, 'a'),
+            (0x1D5A0, 0x1D5B9, 'A'), (0x1D5BA, 0x1D5D3, 'a'),
+            (0x1D5D4, 0x1D5ED, 'A'), (0x1D5EE, 0x1D607, 'a'),
+            (0x1D670, 0x1D689, 'A'), (0x1D68A, 0x1D6A3, 'a'),
+            (0x1D538, 0x1D550, 'A'), (0x1D552, 0x1D56B, 'a'),
+        ]
+        for a, b, base in ranges:
+            if a <= o <= b:
+                return chr(ord(base) + (o - a))
+        if 0xFF21 <= o <= 0xFF3A:
+            return chr(ord('A') + (o - 0xFF21))
+        if 0xFF41 <= o <= 0xFF5A:
+            return chr(ord('a') + (o - 0xFF41))
+        if ch.isascii() or ('\u0600' <= ch <= '\u06FF') or ch.isspace() or ch.isdigit():
+            return ch
+        cat = unicodedata.category(ch)
+        if cat.startswith('L') or cat.startswith('N'):
+            try:
+                un = unicodedata.name(ch, '')
+                for letter in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ':
+                    if f' LETTER {letter}' in un:
+                        return letter.lower() if 'SMALL' in un else letter
+            except Exception:
+                pass
+            return ''
+        if cat in ('So', 'Sk') and o > 0x1F000:
+            return ch
+        return ''
+    s = ''.join(mapc(c) for c in s)
     s = re.sub(r'[\U0001F1E0-\U0001F1FF]+', ' ', s)
     s = re.sub(r'[|｜]?\s*[0-9۰-۹]{1,2}\s*[:：٫.]\s*[0-9۰-۹]{1,2}', ' ', s)
-    for ch in ('_', '*', '`', '[', ']', '\n', '\r', '|', '｜', '@', '『', '』', '【', '】'):
+    for ch in ('_', '*', '`', '[', ']', '\n', '\r', '|', '｜', '@', '『', '』'):
         s = s.replace(ch, ' ')
     s = ' '.join(s.split())
     return s or "User"
@@ -6227,41 +6486,8 @@ def _composite_panel(username: str, avatar_path: str = None) -> str:
             except Exception as e:
                 logger.debug(f"avatar composite: {e}")
 
-        # اسم خالص بدون تایم/پرچم — همان اسم کاربر
+        # اسم خالص کاربر (فونت فانتزی → لاتین خوانا)
         raw_name = clean_display_name(username or "User")
-        # اگر فونت نتواند بعضی حروف فانتزی را بکشد، به lookalike تبدیل کن
-        try:
-            from PIL import ImageFont as _IF
-            _test_font = None
-            for _fp in ("/usr/share/fonts/truetype/freefont/FreeSerif.ttf",
-                        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"):
-                if os.path.exists(_fp):
-                    try:
-                        _test_font = _IF.truetype(_fp, 40)
-                        break
-                    except Exception:
-                        pass
-            if _test_font is not None:
-                mapped = []
-                for ch in raw_name:
-                    try:
-                        if _test_font.getmask(ch).getbbox() is None:
-                            # unmapped → try name-based latin
-                            import unicodedata as _ud
-                            un = _ud.name(ch, '')
-                            found = ''
-                            for letter in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ':
-                                if f' LETTER {letter}' in un:
-                                    found = letter.lower() if 'SMALL' in un else letter
-                                    break
-                            mapped.append(found if found else ch)
-                        else:
-                            mapped.append(ch)
-                    except Exception:
-                        mapped.append(ch)
-                raw_name = ''.join(mapped) or raw_name
-        except Exception:
-            pass
         if len(raw_name) > 28:
             parts = raw_name.split()
             if len(parts) >= 2:
