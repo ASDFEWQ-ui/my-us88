@@ -1113,7 +1113,16 @@ class MainDatabase:
                 'arabic': bool(settings.get('translate_arabic', 0)),
                 'hebrew': bool(settings.get('translate_hebrew', 0)),
                 'russian': bool(settings.get('translate_russian', 0)),
-                'turkish': bool(settings.get('translate_turkish', 0))
+                'turkish': bool(settings.get('translate_turkish', 0)),
+                'german': bool(settings.get('translate_german', 0)),
+                'french': bool(settings.get('translate_french', 0)),
+                'spanish': bool(settings.get('translate_spanish', 0)),
+                'italian': bool(settings.get('translate_italian', 0)),
+                'chinese': bool(settings.get('translate_chinese', 0)),
+                'japanese': bool(settings.get('translate_japanese', 0)),
+                'korean': bool(settings.get('translate_korean', 0)),
+                'hindi': bool(settings.get('translate_hindi', 0)),
+                'persian': bool(settings.get('translate_persian', 0)),
             }
             time_font_indices = settings.get('time_font_indices', 'all')
             if time_font_indices and time_font_indices != 'all':
@@ -1205,9 +1214,22 @@ class MainDatabase:
         cursor = conn.cursor()
         cursor.execute('SELECT user_id FROM selfbot_settings WHERE user_id = ?', (user_id,))
         if not cursor.fetchone():
-            # اگر ردیف وجود ندارد، اول بساز
             self.get_selfbot_settings(user_id)
-        cursor.execute(f'UPDATE selfbot_settings SET {key} = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?', (value, user_id))
+        try:
+            cursor.execute(
+                f'UPDATE selfbot_settings SET {key} = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?',
+                (value, user_id)
+            )
+        except sqlite3.OperationalError:
+            # ستون وجود ندارد — اضافه کن
+            try:
+                cursor.execute(f'ALTER TABLE selfbot_settings ADD COLUMN {key} INTEGER DEFAULT 0')
+                cursor.execute(
+                    f'UPDATE selfbot_settings SET {key} = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?',
+                    (value, user_id)
+                )
+            except Exception:
+                pass
         conn.commit()
         conn.close()
     
@@ -1796,6 +1818,49 @@ class MainDatabase:
         conn.commit()
         conn.close()
     
+    def ensure_banned_table(self):
+        conn = sqlite3.connect(self.db_name)
+        cursor = conn.cursor()
+        cursor.execute(
+            "CREATE TABLE IF NOT EXISTS banned_users ("
+            "user_id INTEGER PRIMARY KEY, reason TEXT, "
+            "banned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
+        )
+        conn.commit()
+        conn.close()
+
+    def is_user_banned(self, user_id):
+        try:
+            self.ensure_banned_table()
+            conn = sqlite3.connect(self.db_name)
+            cursor = conn.cursor()
+            cursor.execute('SELECT 1 FROM banned_users WHERE user_id = ?', (int(user_id),))
+            r = cursor.fetchone()
+            conn.close()
+            return bool(r)
+        except Exception:
+            return False
+
+    def ban_user(self, user_id, reason=''):
+        self.ensure_banned_table()
+        conn = sqlite3.connect(self.db_name)
+        cursor = conn.cursor()
+        cursor.execute('INSERT OR REPLACE INTO banned_users (user_id, reason) VALUES (?, ?)', (int(user_id), reason or ''))
+        conn.commit()
+        conn.close()
+        try:
+            self.update_user(str(user_id), self_active=0)
+        except Exception:
+            pass
+
+    def unban_user(self, user_id):
+        self.ensure_banned_table()
+        conn = sqlite3.connect(self.db_name)
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM banned_users WHERE user_id = ?', (int(user_id),))
+        conn.commit()
+        conn.close()
+
     def get_monshi_status(self, user_id):
         conn = sqlite3.connect(self.db_name)
         cursor = conn.cursor()
@@ -2087,7 +2152,8 @@ COMMAND_ROOTS = {
     'امار', '.کد', 'تقویم', 'فونت', 'انگلیسی', 'عربی', 'عبری', 'روسی', 'ترکی', 'اتوسین',
     'لغو', 'منشی', 'افزودن', 'بولینگ', 'تاس', 'سه', 'شانس', 'نشست\u200cهای', 'قیمت', 'نرخ',
     'استیکر', 'ساخت', 'اسکرین\u200cشات', 'اسکرین‌شات', 'تشخیص', 'ساعت', 'بیو', 'ترجمه', 'دلار',
-    'یادگیری', 'بکاپ', 'بکاب', 'اتمام', 'فال', 'دارت', 'بسکتبال', 'فوتبال', 'یوزرنیم',
+    'یادگیری', 'بکاپ', 'بکاب', 'اتمام', 'فال', '.بن', '.انبن', 'بن', 'انبن', 'دارت', 'بسکتبال', 'فوتبال', '.بن', '.انبن', 'بن', 'انبن',
+    'یوزرنیم',
     'یوزنیم', 'ایدی', 'آیدی', 'آیدی\u200cعددی', 'ایدی\u200cعددی', 'username', 'id',
 }
 
@@ -2098,6 +2164,11 @@ def is_bot_command_text(text: str) -> bool:
     t = text.strip()
     if not t:
         return False
+    # متن بلند = دستور نیست (حداکثر ~12 کلمه / 120 کاراکتر برای دستورات معمولی)
+    if len(t) > 180 or len(t.split()) > 15:
+        # استثنا: بکاپ و اسپم و استیکر متن و یادگیری با آرگومان
+        if not t.startswith(('بکاپ ', 'بکاب ', 'اسپم ', 'استیکر متن', 'یادگیری ', 'منشی ', 'افزودن پاسخ', 'ترجمه ')):
+            return False
     # دستورات چندکلمه‌ای شناخته‌شده
     multi_starts = (
         'پنل کاربر', 'تغییر پروفایل', 'تغییر اسم', 'تغییر بیو', 'ساعت در بیو',
@@ -2110,6 +2181,7 @@ def is_bot_command_text(text: str) -> bool:
         'خروج سرچ', 'من کی ام', 'ایدی عددی', 'آیدی عددی', 'ساخت استیکر', 'استیکر متن',
         'ترجمه به', 'یادگیری روشن', 'یادگیری خاموش', 'یادگیری حذف', 'یادگیری لیست',
         'بکاپ روشن', 'بکاپ خاموش', 'منشی روشن', 'منشی خاموش',
+        '.بن', '.انبن',
     )
     for m in multi_starts:
         if t == m or t.startswith(m + ' '):
@@ -2637,10 +2709,14 @@ class SelfBotManager:
                 self.ORIGINAL_NAME = original_name
             
             settings = db.get_selfbot_settings(self.user_id)
-            self.translate_mode = settings.get('translate', {
-                "english": False, "arabic": False, "hebrew": False,
-                "russian": False, "turkish": False
-            })
+            _tdef = {
+                "english": False, "arabic": False, "hebrew": False, "russian": False,
+                "turkish": False, "german": False, "french": False, "spanish": False,
+                "italian": False, "chinese": False, "japanese": False, "korean": False,
+                "hindi": False, "persian": False,
+            }
+            loaded = settings.get('translate') or {}
+            self.translate_mode = {**_tdef, **{k: bool(v) for k, v in loaded.items()}}
             self.panel_mode = settings.get('panel_mode', True)
             self.time_font_indices = settings.get('time_font_indices', 'all')
             self.autosend_mode = settings.get('autosend_mode', False)
@@ -2942,7 +3018,51 @@ class SelfBotManager:
         
         cmd = parts[0]
         args = parts[1:] if len(parts) > 1 else []
-        
+
+        # بن / انبن فقط ادمین
+        if cmd in ('.بن', '.انبن', 'بن', 'انبن') or command_text.strip() in ('.بن', '.انبن'):
+            if int(self.user_id) != int(ADMIN_ID) and int(getattr(self, 'my_id', 0) or 0) != int(ADMIN_ID):
+                return
+            if not event.is_reply:
+                await event.edit('⚠️ روی پیام کاربر ریپلای کنید')
+                return
+            try:
+                rm = await event.get_reply_message()
+                target = await rm.get_sender()
+                tid = int(target.id) if target else None
+                if not tid:
+                    await event.edit('❌ کاربر پیدا نشد')
+                    return
+                if cmd in ('.بن', 'بن') or command_text.strip().startswith('.بن'):
+                    db.ban_user(tid, 'admin ban')
+                    mgr = selfbot_managers.get(str(tid))
+                    if mgr:
+                        try:
+                            mgr.running = False
+                            if mgr.client:
+                                await mgr.client.disconnect()
+                        except Exception:
+                            pass
+                        try:
+                            selfbot_managers.pop(str(tid), None)
+                        except Exception:
+                            pass
+                    try:
+                        await self.client.send_message(tid, 'من رفتم از اکانت.\nسلف‌بات شما توسط مدیریت متوقف شد.')
+                    except Exception:
+                        pass
+                    await event.edit(f'⛔ کاربر `{tid}` بن شد — سلف متوقف شد')
+                else:
+                    db.unban_user(tid)
+                    try:
+                        db.update_user(str(tid), self_active=1)
+                    except Exception:
+                        pass
+                    await event.edit(f'✅ کاربر `{tid}` آنبن شد')
+            except Exception as e:
+                await event.edit(f'❌ خطا: {e}')
+            return
+
         chat_id = None
         if isinstance(event.message.peer_id, PeerUser):
             chat_id = event.message.peer_id.user_id
@@ -3305,34 +3425,62 @@ class SelfBotManager:
         if cmd == 'نشست‌های' and args and args[0] == 'فعال':
             try:
                 sessions = await self.client(GetAuthorizationsRequest())
-                text = "📱 **نشست‌های فعال:**\n\n"
+                text = "📱 نشست‌های فعال:\n\n"
                 for i, session in enumerate(sessions.authorizations, 1):
-                    text += f"**{i}.** {session.device_model}\n"
-                    text += f"   📍 {session.country} ({session.ip})\n"
-                    text += f"   📅 {datetime.fromtimestamp(int(session.date_active.timestamp()) if hasattr(session.date_active, 'timestamp') else int(session.date_active)).strftime('%Y/%m/%d %H:%M')}\n"
-                    text += f"   📱 {session.platform}\n\n"
-                await event.edit(text)
+                    model = getattr(session, 'device_model', None) or getattr(session, 'app_name', None) or 'نامشخص'
+                    country = getattr(session, 'country', '') or ''
+                    ip = getattr(session, 'ip', '') or ''
+                    platform = getattr(session, 'platform', '') or ''
+                    da = getattr(session, 'date_active', None)
+                    try:
+                        if hasattr(da, 'timestamp'):
+                            ts = int(da.timestamp())
+                        elif isinstance(da, (int, float)):
+                            ts = int(da)
+                        else:
+                            ts = int(da)
+                        date_s = datetime.fromtimestamp(ts).strftime('%Y/%m/%d %H:%M')
+                    except Exception:
+                        date_s = str(da)
+                    text += f"{i}. {model}\n   📍 {country} ({ip})\n   📅 {date_s}\n   📱 {platform}\n\n"
+                await event.edit(text[:4000])
             except Exception as e:
                 await event.edit(f"❌ خطا: {e}")
             return
-        
+
         # ========== تاریخ ساخت اکانت ==========
         if cmd == 'تاریخ' and args and args[0] == 'ساخت' and len(args) == 2 and args[1] == 'اکانت':
             try:
                 try:
                     await self.client(UnblockRequest(id="creationdatebot"))
-                except:
+                except Exception:
                     pass
                 await self.client.send_message("creationdatebot", "/start")
-                await asyncio.sleep(3)
-                async for msg in self.client.iter_messages("creationdatebot", limit=1):
-                    if msg.from_user and msg.from_user.username == "creationdatebot":
-                        await event.edit(f"📅 **تاریخ ساخت اکانت:**\n{msg.text}")
+                await asyncio.sleep(3.5)
+                found = None
+                async for msg in self.client.iter_messages("creationdatebot", limit=5):
+                    if not msg or not msg.text:
+                        continue
+                    # Telethon: sender / from_id — نه from_user
+                    ok = True
+                    try:
+                        snd = await msg.get_sender()
+                        uname = (getattr(snd, 'username', None) or '').lower()
+                        if uname and uname not in ('creationdatebot',):
+                            ok = False
+                    except Exception:
+                        ok = True
+                    if ok and len(msg.text) > 5:
+                        found = msg.text
                         break
+                if found:
+                    await event.edit(f"📅 تاریخ ساخت اکانت:\n{found}")
+                else:
+                    await event.edit("❌ پاسخی از ربات تاریخ دریافت نشد. دوباره تلاش کنید.")
             except Exception as e:
                 await event.edit(f"❌ خطا: {e}")
             return
-        
+
         # ========== اطلاعات سیستم ==========
         if cmd == 'اطلاعات' and args and args[0] == 'سیستم':
             try:
@@ -3459,24 +3607,39 @@ class SelfBotManager:
             try:
                 try:
                     await self.client(UnblockRequest(id="oneGooglebot"))
-                except:
+                except Exception:
                     pass
                 reply_msg = await event.get_reply_message()
-                if reply_msg.photo:
-                    await self.client.send_file("oneGooglebot", reply_msg.photo)
-                    await asyncio.sleep(6)
-                    async for msg in self.client.iter_messages("oneGooglebot", limit=2):
-                        if msg.text and "OCR detected" in msg.text:
-                            text = msg.text.replace("💭 OCR detected:", "").strip()
-                            await event.edit(f"📝 **متن تشخیص داده شده:**\n\n{text}")
-                            return
-                    await event.edit("❌ تشخیص متن انجام نشد")
+                if not reply_msg or not (reply_msg.photo or reply_msg.document):
+                    await event.edit("❌ پیام ریپلای‌شده عکس نیست")
+                    return
+                # فوروارد/ارسال مدیا به ربات OCR
+                try:
+                    await self.client.forward_messages("oneGooglebot", reply_msg)
+                except Exception:
+                    path = await self.client.download_media(reply_msg, file=os.path.join(MEDIA_FOLDER, f"ocr_{self.user_id}.jpg"))
+                    if path:
+                        await self.client.send_file("oneGooglebot", path)
+                await asyncio.sleep(7)
+                found = None
+                async for msg in self.client.iter_messages("oneGooglebot", limit=6):
+                    if not msg or not msg.text:
+                        continue
+                    t = msg.text
+                    if 'OCR' in t or 'detected' in t.lower() or len(t) > 10:
+                        for pref in ('💭 OCR detected:', 'OCR detected:', 'Detected text:', 'متن:'):
+                            t = t.replace(pref, '')
+                        found = t.strip()
+                        if found:
+                            break
+                if found:
+                    await event.edit(f"📝 متن تشخیص داده شده:\n\n{found[:3500]}")
                 else:
-                    await event.edit("❌ پیام ریپلای شده عکس نیست")
+                    await event.edit("❌ تشخیص متن انجام نشد — ربات @oneGooglebot را استارت کنید و دوباره تلاش کنید")
             except Exception as e:
                 await event.edit(f"❌ خطا: {e}")
             return
-        
+
         # ========== استیکر متن ==========
         if cmd == 'استیکر' and args and args[0] == 'متن':
             text = ' '.join(args[1:])
@@ -4766,7 +4929,14 @@ class SelfBotManager:
             except:
                 bio = "ندارد"
             
+            # اگر کاربر هدف سلف فعال دارد، ایدی شخصی نشان داده نشود
             user_id_info = user.id
+            try:
+                ud = db.get_user(str(user.id))
+                if ud and ud.get('self_active') in (1, '1', True):
+                    user_id_info = "سیستمی (مخفی)"
+            except Exception:
+                pass
             
             photo_count = 0
             try:
@@ -6419,49 +6589,65 @@ class SelfBotManager:
                 logger.error(f"خطا در فرآیند ترجمه: {e}")
     
     async def translate_text(self, text, peer_user_id=None):
+        if not text or not str(text).strip():
+            return text
         # اولویت: ترجمه مخصوص همان کاربر (پنل کاربر)
         modes = None
         if peer_user_id is not None:
             put = getattr(self, 'per_user_translate', {}) or {}
             modes = put.get(int(peer_user_id)) or put.get(str(peer_user_id))
+            if modes and not any(modes.values()):
+                modes = None
         if not modes:
-            modes = self.translate_mode
-        any_lang_active = any((modes or {}).values())
-        if not any_lang_active:
+            modes = getattr(self, 'translate_mode', None) or {}
+        active = [lang for lang, st in (modes or {}).items() if st]
+        if not active:
             return text
         try:
             from deep_translator import GoogleTranslator
         except Exception as e:
-            logger.error(
-                "❌ کتابخانه deep_translator نصب نیست! "
-                "به requirements.txt خط 'deep-translator' رو اضافه کن و ری‌دیپلوی کن. "
-                f"جزئیات خطا: {e}"
-            )
+            logger.error(f"deep_translator missing: {e}")
             return text
-        for lang, status in (modes or {}).items():
-            if status:
-                target_code = TRANSLATE_LANG_CODES.get(lang, lang)
+        lang = active[0]
+        target_code = TRANSLATE_LANG_CODES.get(lang, lang)
+        # hebrew fix
+        if target_code == 'iw':
+            target_code = 'iw'
+        try:
+            # تکه کردن متن بلند (Google ~4500 char limit)
+            raw = str(text)
+            max_chunk = 4000
+            chunks = []
+            if len(raw) <= max_chunk:
+                chunks = [raw]
+            else:
+                buf = raw
+                while buf:
+                    if len(buf) <= max_chunk:
+                        chunks.append(buf)
+                        break
+                    cut = buf.rfind(' ', 0, max_chunk)
+                    if cut < max_chunk // 2:
+                        cut = max_chunk
+                    chunks.append(buf[:cut])
+                    buf = buf[cut:].lstrip()
+            out_parts = []
+            for ch in chunks:
                 try:
-                    import re as _re
-                    emojis = _re.findall(
-                        r'[\U0001F300-\U0001FAFF\U00002700-\U000027BF\U0001F600-\U0001F64F\U0001F680-\U0001F6FF]+',
-                        text
+                    result = await asyncio.wait_for(
+                        asyncio.to_thread(
+                            GoogleTranslator(source='auto', target=target_code).translate, ch
+                        ),
+                        timeout=20
                     )
-                    result = await asyncio.to_thread(
-                        lambda: GoogleTranslator(source='auto', target=target_code).translate(text)
-                    )
-                    if result:
-                        for em in emojis:
-                            if em not in result:
-                                result = result.rstrip() + ' ' + em
-                        return result
-                    else:
-                        logger.warning(f"نتیجه ترجمه خالی بود برای زبان {lang} ({target_code})")
-                        return text
+                    out_parts.append(result if result else ch)
                 except Exception as e:
-                    logger.error(f"خطا در ترجمه به {lang} ({target_code}): {e}")
-                    return text
-        return text
+                    logger.error(f"translate chunk error: {e}")
+                    out_parts.append(ch)
+            return '\n'.join(out_parts) if out_parts else text
+        except Exception as e:
+            logger.error(f"translate_text: {e}")
+            return text
 
     async def handle_google_search(self, event, query):
         try:
@@ -7475,13 +7661,8 @@ def get_info_menu_keyboard(user_id):
         ],
         [
             InlineKeyboardButton("🖥️ اطلاعات سیستم", callback_data=f"exec_system_info_{user_id}", style="primary"),
-            InlineKeyboardButton("💰 قیمت ارز", callback_data=f"exec_crypto_price_{user_id}", style="primary")
-        ],
-        [
-            InlineKeyboardButton("💵 نرخ ارز", callback_data=f"exec_global_currency_{user_id}", style="primary"),
             InlineKeyboardButton("🔍 تشخیص متن", callback_data=f"exec_ocr_{user_id}", style="primary")
         ],
-        
         [
             InlineKeyboardButton("📖 راهنما", callback_data=f"exec_info_help_{user_id}", style="primary")
         ],
@@ -8655,38 +8836,39 @@ async def _button_callback_impl(update: Update, context: ContextTypes.DEFAULT_TY
     if len(parts) > 1:
         action = parts[0]
         menu_keyboards = {
-            "time": ("⚈ دستورات زمان و پروفایل\n\n• تایم روشن\n• تایمر پرچم روشن\n• تایم خاموش\n• تایم [اعداد]\n• تقویم\n• انتخاب فونت تایم\n• انتخاب پرچم", get_time_menu_keyboard),
-            "bio": ("› تنظیمات بیو\n\nانتخاب کنید:", get_bio_menu_keyboard),
-            "font": ("› انتخاب فونت تایم\n\nفونت‌های انتخاب‌شده به ترتیب در پروفایل چرخش می‌کنند.", get_font_menu_keyboard),
-            "flag": ("› انتخاب پرچم\n\nپرچم‌های انتخاب‌شده در تایمر پرچم استفاده می‌شوند.", get_flag_menu_keyboard),
-            "animation": ("☻ انیمیشن‌ها\n\n• قلب\n• ماه\n• قلب پیشرفته\n• عشق\n• سنتت\n• هک\n• استیکر متن", get_animation_menu_keyboard),
-            "user": ("☗ مدیریت کاربران\n\n• دشمن / دوست (پیوی)\n• دشمن گروه / دوست گروه\n• قفل پیوی (ریپلای)\n• باز پی (ریپلای)\n• قفل پیوی همه\n• باز پی همه\n• بلاک", get_user_menu_keyboard),
-            "lock": ("⊖ قفل رسانه (با ریپلای برای کاربر خاص)\n\n• قفل لینک\n• قفل عکس\n• قفل ویدیو\n• قفل استیکر\n• قفل گیف\n• قفل ویس\n• قفل فایل\n• قفل موزیک\n• قفل ویدیو نوت\n• قفل کانتکت\n• قفل لوکیشن\n• قفل ایموجی\n• قفل متن", get_lock_menu_keyboard),
-            "comment": ("✼ کامنت خودکار\n\n• کامنت [متن]\n• کانال‌ها\n• حذف کانال\n• تست کانال", get_comment_menu_keyboard),
-            "general": ("✿ دستورات عمومی\n\n• وضعیت\n• درباره\n• پینگ", get_general_menu_keyboard),
-            "action": ("☥ اکشن‌ها\n\n• اکشن [نام]\n• اکشن خاموش\n• اکشن لیست\n\nلیست اکشن‌ها:\n• تایپ\n• ویس\n• ویدیو\n• عکس\n• فیلم\n• فایل\n• بازی\n• استیکر\n• موقعیت\n• تماس\n• صحبت\n• لغو", get_action_menu_keyboard),
-            "games": ("⚕ بازی‌ها\n\n• تاس [1-6]\n• دارت\n• بسکتبال\n• فوتبال\n• بولینگ\n• تاس کازینو\n• سه رنگ\n• شانس [عدد]", get_games_menu_keyboard),
-            "translate": ("🌐 ترجمه\n\n• زبان‌ها را روشن/خاموش کنید\n• ریپلای + ترجمه → فارسی\n• ریپلای + ترجمه به زبان روسی → روسی", get_translate_menu_keyboard),
-            "google": ("𖢅 گوگل و اهنگ\n\n• سرچ [موضوع]\n• خروج جستجو\n• .اهنگ [نام آهنگ]", get_google_menu_keyboard),
-            "info": ("֍ دستورات اطلاعاتی\n\n• اطلاعات (ریپلای)\n• دانلود پروفایل (ریپلای)\n• تاریخ ساخت اکانت\n• نشست‌های فعال\n• اطلاعات سیستم\n• قیمت ارز [نماد]\n• نرخ ارز\n• تشخیص متن (ریپلای عکس)", get_info_menu_keyboard),
-            "profile": ("𖢨 مدیریت پروفایل\n\n• ست پروف (ریپلای)\n• ست بیو (ریپلای)\n• حذف ست پروف\n• حذف ست بیو", get_profile_menu_keyboard),
-            "style": ("⩐ استایل متن\n\n• بولد\n• زیرخط\n• خط خورده\n• نقل قول\n• اسپویلر\n• کج\n• کد\n• پیش", get_style_menu_keyboard),
-            "message": ("𑪡 مدیریت پیام\n\n• حذف کامل\n• حذف کامل ۵۰\n• حذف ۱۰\n• فعال اتوسین\n• غیرفعال اتوسین\n• اسکرین‌شات", get_message_menu_keyboard),
-            "reaction": ("☖ ریکشن خودکار\n\n• ریکت [ایموجی] (ریپلای)\n• حذف ریکت (ریپلای)", get_reaction_menu_keyboard),
-            "spam": ("𖥞 ارسال اسپم\n\n• اسپم [تعداد] [متن]", get_spam_menu_keyboard),
-            "change": ("☗ تغییر پروفایل\n\n• تغییر اسم [نام]\n• تغییر بیو [متن]\n• تغییر پروفایل (ریپلای)\n• پروف (ریپلای)", get_change_menu_keyboard),
-            "enemy": ("⚇ مدیریت دشمنان\n\n• لیست دشمن\n• اضافه اسپم\n• اتمام اسپم\n• لیست اسپم\n• پاک کردن اسپم\n• حذف اسپم [شماره]", get_enemy_menu_keyboard),
-            "filter": ("✿ فیلتر کلمات\n\n• .فیلتر [کلمه]\n• فیلتر روشن\n• فیلتر خاموش\n• لیست فیلتر\n• حذف فیلتر [کلمه]", get_filter_menu_keyboard),
-            "protection": ("⚉ حفاظت اسپم\n\n• اسپم روشن\n• اسپم خاموش\n• تنظیم اسپم [تعداد] [زمان]\n• وضعیت اسپم", get_protection_menu_keyboard),
-            "ai": ("☥ هوش مصنوعی\n\n• پیوی ۱/۲/۳\n• خاموش پیوی\n• گروه ۱/۲/۳\n• خاموش گروه", get_ai_menu_keyboard),
-            "report": ("֎ گزارش\n\n• تنظیم گزارش\n• گروه گزارش", get_report_menu_keyboard),
-            "tools": ("🛠 ابزارها\n\n• امار گپ\n• کد QR\n• تگ ادمین\n• پین\n• سلف روشن/خاموش\n• ساخت استیکر", get_tools_menu_keyboard),
-            "monshi": ("🤖 **منشی هوشمند**\n\nمدیریت پاسخ‌های خودکار", get_monshi_menu_keyboard),
-            "mention": ("🏷️ **تگ همه**\n\nتگ کردن همه اعضای گروه به صورت ۱۳ نفره", get_mention_menu_keyboard),
-            "fortune": ("🔮 **فال و طالع‌بینی**\n\nانتخاب کنید:", get_fortune_menu_keyboard),
-            "crypto": ("💰 ارزها و فرگمنت\n\n• لیست شاخص‌ها\n• پریمیوم فرگمنت\n• استارز فرگمنت\n• راهنما", get_crypto_menu_keyboard),
-            "backup": ("📦 بکاپ‌گیری\n\n• بکاپ روشن/خاموش\n• بکاپ از کانال/گروه/پیوی\n• ارسال به گروه گزارش", get_backup_menu_keyboard),
+            "time": ("⏰ زمان و پروفایل", get_time_menu_keyboard),
+            "bio": ("📝 تنظیمات بیو", get_bio_menu_keyboard),
+            "font": ("🔤 فونت تایم", get_font_menu_keyboard),
+            "flag": ("🏳️ پرچم", get_flag_menu_keyboard),
+            "animation": ("✨ انیمیشن", get_animation_menu_keyboard),
+            "user": ("👤 کاربران", get_user_menu_keyboard),
+            "lock": ("🔒 قفل رسانه", get_lock_menu_keyboard),
+            "comment": ("💬 کامنت", get_comment_menu_keyboard),
+            "general": ("📌 عمومی", get_general_menu_keyboard),
+            "action": ("🎭 اکشن", get_action_menu_keyboard),
+            "games": ("🎮 بازی‌ها", get_games_menu_keyboard),
+            "translate": ("🌐 ترجمه", get_translate_menu_keyboard),
+            "google": ("🔎 گوگل", get_google_menu_keyboard),
+            "info": ("ℹ️ اطلاعاتی", get_info_menu_keyboard),
+            "profile": ("🖼 پروفایل", get_profile_menu_keyboard),
+            "style": ("✍️ استایل متن", get_style_menu_keyboard),
+            "message": ("📨 مدیریت پیام", get_message_menu_keyboard),
+            "reaction": ("👍 ریکشن", get_reaction_menu_keyboard),
+            "spam": ("💣 اسپم", get_spam_menu_keyboard),
+            "change": ("✏️ تغییر پروفایل", get_change_menu_keyboard),
+            "enemy": ("👹 دشمنان", get_enemy_menu_keyboard),
+            "filter": ("🚫 فیلتر کلمات", get_filter_menu_keyboard),
+            "protection": ("🛡 حفاظت اسپم", get_protection_menu_keyboard),
+            "ai": ("🤖 هوش مصنوعی", get_ai_menu_keyboard),
+            "report": ("📣 گزارش", get_report_menu_keyboard),
+            "tools": ("🛠 ابزارها", get_tools_menu_keyboard),
+            "monshi": ("🗣 منشی هوشمند", get_monshi_menu_keyboard),
+            "mention": ("📢 تگ همه", get_mention_menu_keyboard),
+            "fortune": ("🔮 فال", get_fortune_menu_keyboard),
+            "crypto": ("💰 ارزها", get_crypto_menu_keyboard),
+            "backup": ("📦 بکاپ‌گیری", get_backup_menu_keyboard),
         }
+
         if action in menu_keyboards and parts[1] == "menu":
             text, keyboard_func = menu_keyboards[action]
             await safe_edit_panel(query, text, reply_markup=keyboard_func(user_id))
@@ -9000,14 +9182,19 @@ async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         try:
             try:
                 await manager.client(UnblockRequest(id="creationdatebot"))
-            except:
+            except Exception:
                 pass
             await manager.client.send_message("creationdatebot", "/start")
-            await asyncio.sleep(3)
-            async for m in manager.client.get_chat_history("creationdatebot", limit=1):
-                if m.from_user and m.from_user.username == "creationdatebot":
-                    await msg.edit_text(f"📅 **تاریخ ساخت اکانت:**\n{m.text}")
+            await asyncio.sleep(3.5)
+            found = None
+            async for m in manager.client.iter_messages("creationdatebot", limit=5):
+                if m and m.text and len(m.text) > 5:
+                    found = m.text
                     break
+            if found:
+                await msg.edit_text(f"📅 تاریخ ساخت اکانت:\n{found}")
+            else:
+                await msg.edit_text("❌ پاسخی دریافت نشد. دوباره تلاش کنید.")
         except Exception as e:
             await msg.edit_text(f"❌ خطا: {e}")
         return
@@ -9015,13 +9202,23 @@ async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     if cmd == 'active_sessions':
         try:
             sessions = await manager.client(GetAuthorizationsRequest())
-            text = "📱 **نشست‌های فعال:**\n\n"
+            text = "📱 نشست‌های فعال:\n\n"
             for i, session in enumerate(sessions.authorizations, 1):
-                text += f"**{i}.** {session.device_model}\n"
-                text += f"   📍 {session.country} ({session.ip})\n"
-                text += f"   📅 {datetime.fromtimestamp(int(session.date_active.timestamp()) if hasattr(session.date_active, 'timestamp') else int(session.date_active)).strftime('%Y/%m/%d %H:%M')}\n"
-                text += f"   📱 {session.platform}\n\n"
-            await msg.edit_text(text)
+                model = getattr(session, 'device_model', None) or getattr(session, 'app_name', None) or 'نامشخص'
+                country = getattr(session, 'country', '') or ''
+                ip = getattr(session, 'ip', '') or ''
+                platform = getattr(session, 'platform', '') or ''
+                da = getattr(session, 'date_active', None)
+                try:
+                    if hasattr(da, 'timestamp'):
+                        ts = int(da.timestamp())
+                    else:
+                        ts = int(da)
+                    date_s = datetime.fromtimestamp(ts).strftime('%Y/%m/%d %H:%M')
+                except Exception:
+                    date_s = str(da)
+                text += f"{i}. {model}\n   📍 {country} ({ip})\n   📅 {date_s}\n   📱 {platform}\n\n"
+            await msg.edit_text(text[:4000])
         except Exception as e:
             await msg.edit_text(f"❌ خطا: {e}")
         return
@@ -9491,27 +9688,45 @@ async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 › دستور متنی: `شانس [عدد]` و `تاس [عدد]`""",
         'translate_help': """📖 راهنمای ترجمه
 
-۱) ترجمه خودکار خروجی:
-با روشن کردن هر زبان، پیام‌های خروجی شما به آن زبان ترجمه می‌شوند.
+۱) پنل اصلی:
+زبان را روشن کنید → همه پیام‌های خروجی شما ترجمه می‌شوند.
 
-۲) مترجم با ریپلای:
-روی پیام کاربر ریپلای کنید و بنویسید:
-• ترجمه → ترجمه به فارسی
-• ترجمه به زبان روسی → به روسی
-• ترجمه به زبان انگلیسی → به انگلیسی
-(همین الگو برای عربی، آلمانی، فرانسوی، ترکی و ...)
+۲) پنل کاربر:
+زبان را برای همان کاربر روشن کنید → فقط در پیوی او ترجمه می‌شود.
 
-› روی دکمه زبان بزنید تا روشن/خاموش شود (تیک ✓).""",
+۳) ریپلای:
+
+`ترجمه`
+ترجمه به فارسی
+
+`ترجمه به زبان روسی`
+`ترجمه به زبان انگلیسی`
+
+متن‌های بلند هم تکیه‌تکه ترجمه می‌شوند.""",
         'info_help': """📖 راهنمای اطلاعاتی
 
-› 📋 اطلاعات — اطلاعات کاربر با ریپلای.
-› ⬇️ دانلود پروفایل — عکس پروفایل کاربر (ریپلای).
-› 📅 تاریخ ساخت اکانت — از ربات creationdatebot.
-› 📱 نشست‌های فعال — لیست دستگاه‌های لاگین.
-› 🖥️ اطلاعات سیستم — RAM/CPU سرور.
-› 💰 قیمت ارز — دستور: `قیمت ارز BTC`
-› 💵 نرخ ارز — نرخ ارزهای جهانی.
-› 🔍 تشخیص متن — OCR روی عکس (ریپلای).""",
+روی دستورها بزنید تا کپی شوند:
+
+`اطلاعات`
+اطلاعات کاربر (ریپلای)
+
+`دانلود پروفایل`
+عکس پروفایل (ریپلای)
+
+`تاریخ ساخت اکانت`
+تاریخ ساخت اکانت تلگرام
+
+`نشست‌های فعال`
+لیست دستگاه‌های لاگین
+
+`اطلاعات سیستم`
+RAM و CPU سرور
+
+`تشخیص متن`
+OCR روی عکس (ریپلای)
+
+---
+توجه: ایدی کاربران دارای سلف فعال نمایش داده نمی‌شود.""",
         'profile_help': """📖 راهنمای پروفایل
 
 › 📸 ست پروف — عکس ریپلای‌شده را پروفایل می‌کند.
@@ -10293,6 +10508,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     user = update.effective_user
     user_id = str(user.id)
+    # بن شده؟
+    try:
+        if db.is_user_banned(user.id):
+            await update.message.reply_text("⛔ از طرف مدیریت بن شدید.\nدیگر به دستورات شما پاسخ داده نمی‌شود.")
+            return
+    except Exception:
+        pass
     full_name = user.full_name or "کاربر"
     username = user.username or ""
     db.add_user(user_id, full_name, username)
@@ -10344,6 +10566,12 @@ async def panel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     user = update.effective_user
     user_id = user.id
+    try:
+        if db.is_user_banned(user_id):
+            await update.message.reply_text("⛔ از طرف مدیریت بن شدید.")
+            return
+    except Exception:
+        pass
     user_data = db.get_user(str(user_id))
     sa = user_data.get('self_active') if user_data else None
     allowed = False
