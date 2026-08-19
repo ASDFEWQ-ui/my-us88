@@ -223,6 +223,53 @@ def _fmt_price(value):
     except Exception:
         return str(value)
 
+
+async def render_crypto_chart_image(title: str, lines: list) -> str:
+    """کارت تصویری نرخ ارز — شبیه خروجی ربات ارز"""
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+        import tempfile, time as _t
+        W, H = 900, max(420, 120 + len(lines) * 52)
+        img = Image.new('RGB', (W, H), (8, 12, 28))
+        draw = ImageDraw.Draw(img)
+        # cyberpunk grid
+        for x in range(0, W, 40):
+            draw.line([(x, 0), (x, H)], fill=(20, 40, 70), width=1)
+        for y in range(0, H, 40):
+            draw.line([(0, y), (W, y)], fill=(20, 40, 70), width=1)
+        # frame
+        draw.rectangle([8, 8, W-9, H-9], outline=(0, 220, 255), width=3)
+        draw.rectangle([16, 16, W-17, H-17], outline=(120, 40, 255), width=1)
+        font_paths = [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+        ]
+        font_title = font_body = ImageFont.load_default()
+        for fp in font_paths:
+            if os.path.exists(fp):
+                try:
+                    font_title = ImageFont.truetype(fp, 36)
+                    font_body = ImageFont.truetype(fp, 24)
+                    break
+                except Exception:
+                    pass
+        draw.text((40, 28), title[:60], fill=(0, 255, 220), font=font_title)
+        y = 90
+        colors = [(0, 255, 180), (255, 200, 80), (120, 200, 255), (255, 120, 200)]
+        for i, line in enumerate(lines[:18]):
+            c = colors[i % len(colors)]
+            draw.ellipse([36, y+6, 52, y+22], fill=c)
+            draw.text((66, y), str(line)[:70], fill=(230, 240, 255), font=font_body)
+            y += 48
+        out = os.path.join(tempfile.gettempdir(), f"crypto_card_{int(_t.time()*1000)}.png")
+        img.save(out, 'PNG')
+        return out
+    except Exception as e:
+        logger.error(f"crypto chart: {e}")
+        return None
+
+
 async def compile_crypto_rates_text():
     prices = await fetch_crypto_prices()
     if not prices:
@@ -1859,7 +1906,7 @@ async def get_ai_response(text, ai_type, user_id=None):
         pass
     return None
 
-COMMAND_KEYWORDS = ('لیست', 'شروع', 'تایم', 'قلب', 'ماه', 'اطلاعات', 'دانلود', 'تاریخ', 'فعال', 'غیرفعال', 'حذف', 'ست', 'بولد', 'زیرخط', 'خط خورده', 'نقل قول', 'اسپویلر', 'کج', 'کد', 'پیش', 'اسپم', 'بلاک', 'ریکت', 'پیوی', 'گروه', 'درباره', 'من کی ام', 'قفل', 'باز', 'تنظیم', 'گروه گزارش', 'دشمن', 'دوست', 'دشمن گروه', 'دوست گروه', 'کانال', 'کامنت', 'تست', 'لیست دشمن', 'لیست اسپم', 'پاک کردن اسپم', 'حذف اسپم', 'اضافه اسپم', 'اتمام اسپم', 'تغییر اسم', 'تغییر بیو', 'تغییر پروفایل', 'پروف', 'اسپم روشن', 'اسپم خاموش', 'پینگ', 'سرچ', 'خروج سرچ', 'قلب پیشرفته', 'عشق', 'سنتت', 'هک', 'وضعیت', '.پنل', 'پنل', 'پنل کاربر', '/panel', '.اهنگ', 'تنظیم اسپم', 'سلف روشن', 'سلف خاموش', 'پین', 'تگ ادمین', 'امار گپ', '.کد', 'تقویم', 'فونت', 'انگلیسی', 'عربی', 'عبری', 'روسی', 'ترکی', 'اتوسین', 'تگ همه', 'لغو تگ', 'منشی', 'افزودن پاسخ', 'حذف پاسخ', 'لیست پاسخ', 'پاک کردن پاسخ‌ها', 'بولینگ', 'تاس', 'سه رنگ', 'شانس', 'تاریخ ساخت اکانت', 'نشست‌های فعال', 'اطلاعات سیستم', 'قیمت ارز', 'نرخ ارز', 'استیکر متن', 'ساخت استیکر', 'اسکرین‌شات', 'تشخیص متن', 'ساعت در بیو', 'ساعت در بیو ۲', 'بیو تاریخ', 'بیو کامل', 'بیو عاشقانه', 'ترجمه', 'پروف')
+COMMAND_KEYWORDS = ('لیست', 'شروع', 'تایم', 'قلب', 'ماه', 'اطلاعات', 'دانلود', 'تاریخ', 'فعال', 'غیرفعال', 'حذف', 'ست', 'بولد', 'زیرخط', 'خط خورده', 'نقل قول', 'اسپویلر', 'کج', 'کد', 'پیش', 'اسپم', 'بلاک', 'ریکت', 'پیوی', 'گروه', 'درباره', 'من کی ام', 'قفل', 'باز', 'تنظیم', 'گروه گزارش', 'دشمن', 'دوست', 'دشمن گروه', 'دوست گروه', 'کانال', 'کامنت', 'تست', 'لیست دشمن', 'لیست اسپم', 'پاک کردن اسپم', 'حذف اسپم', 'اضافه اسپم', 'اتمام اسپم', 'تغییر اسم', 'تغییر بیو', 'تغییر پروفایل', 'پروف', 'اسپم روشن', 'اسپم خاموش', 'پینگ', 'سرچ', 'خروج سرچ', 'قلب پیشرفته', 'عشق', 'سنتت', 'هک', 'وضعیت', '.پنل', 'پنل', 'پنل کاربر', '/panel', '.اهنگ', 'تنظیم اسپم', 'سلف روشن', 'سلف خاموش', 'پین', 'تگ ادمین', 'امار گپ', '.کد', 'تقویم', 'فونت', 'انگلیسی', 'عربی', 'عبری', 'روسی', 'ترکی', 'اتوسین', 'تگ همه', 'لغو تگ', 'منشی', 'افزودن پاسخ', 'حذف پاسخ', 'لیست پاسخ', 'پاک کردن پاسخ‌ها', 'بولینگ', 'تاس', 'سه رنگ', 'شانس', 'تاریخ ساخت اکانت', 'نشست‌های فعال', 'اطلاعات سیستم', 'قیمت ارز', 'نرخ ارز', 'استیکر متن', 'ساخت استیکر', 'اسکرین‌شات', 'تشخیص متن', 'ساعت در بیو', 'ساعت در بیو ۲', 'بیو تاریخ', 'بیو کامل', 'بیو عاشقانه', 'ترجمه', 'پروف', 'دلار', 'نرخ')
 
 # نگاشت زبان‌های فارسی به کدهای استاندارد ISO که deep_translator تضمینی می‌شناسد
 TRANSLATE_LANG_CODES = {
@@ -2942,6 +2989,32 @@ class SelfBotManager:
                 await event.edit(f"❌ خطا: {e}")
             return
         
+        # ========== دلار / نرخ (کارت تصویری) ==========
+        if cmd in ('دلار', 'نرخ') or (cmd == 'نرخ' and args and args[0] == 'ارز'):
+            try:
+                text = await compile_crypto_rates_text()
+                plain_lines = []
+                for ln in text.replace('<b>','').replace('</b>','').replace('<code>','').replace('</code>','').split('\n'):
+                    ln = ln.strip()
+                    if ln:
+                        plain_lines.append(ln)
+                chart = await render_crypto_chart_image('بازار جهانی / دلار', plain_lines[1:16] if len(plain_lines)>1 else plain_lines)
+                if chart and os.path.exists(chart):
+                    await self.client.send_file(event.chat_id, chart, caption=text, parse_mode='html')
+                    try:
+                        os.remove(chart)
+                    except Exception:
+                        pass
+                    try:
+                        await event.delete()
+                    except Exception:
+                        pass
+                else:
+                    await event.edit(text, parse_mode='html')
+            except Exception as e:
+                await event.edit(f'❌ خطا در دریافت نرخ: {e}')
+            return
+
         # ========== قیمت ارز ==========
         if cmd == 'قیمت' and args and args[0] == 'ارز' and len(args) > 1:
             currency = args[1].upper()
@@ -3755,6 +3828,28 @@ class SelfBotManager:
             await event.edit(message)
             return
         
+                # پیوی با ایدی عددی — لینک کلیک‌خور به پیوی کاربر
+        if cmd == 'پیوی' and args and len(args) == 1 and str(args[0]).isdigit():
+            try:
+                tid = int(args[0])
+                info = await self.get_user_info(tid, clickable=True)
+                entity = await self.client.get_entity(tid)
+                uname = getattr(entity, 'username', None)
+                fname = (getattr(entity, 'first_name', None) or '')
+                lname = (getattr(entity, 'last_name', None) or '')
+                text = (
+                    f"👤 **کاربر**\n"
+                    f"• نام: {info}\n"
+                    f"• ایدی عددی: `{tid}`\n"
+                    f"• یوزرنیم: @{uname if uname else 'ندارد'}\n"
+                    f"• نام کامل: {(fname + ' ' + lname).strip() or '—'}\n\n"
+                    f"🔗 روی نام کلیک کن → باز شدن پیوی"
+                )
+                await event.edit(text, parse_mode='md')
+            except Exception as e:
+                await event.edit(f"❌ کاربر پیدا نشد: {e}")
+            return
+
         if cmd == 'خاموش' and args and args[0] == 'پیوی' and len(args) == 1:
             ai_status = settings.get('ai_status', {})
             ai_status['ai_1_pm'] = False
@@ -5043,16 +5138,22 @@ class SelfBotManager:
         except Exception as e:
             logger.error(f"moon_animation: {e}")
     
-    async def get_user_info(self, user_id):
+    async def get_user_info(self, user_id, clickable=True):
+        """نام کاربر + لینک tg:// برای کلیک و رفتن به پیوی (حتی بدون یوزرنیم)."""
         try:
-            entity = await self.client.get_entity(user_id)
-            if entity.username:
-                return f"@{entity.username}"
-            elif entity.first_name:
-                return f"{entity.first_name} {entity.last_name or ''}".strip()
-            else:
-                return f"کاربر {user_id}"
-        except:
+            entity = await self.client.get_entity(int(user_id))
+            uname = getattr(entity, 'username', None)
+            fname = (getattr(entity, 'first_name', None) or '').strip()
+            lname = (getattr(entity, 'last_name', None) or '').strip()
+            display = f"@{uname}" if uname else (f"{fname} {lname}".strip() or f"کاربر {user_id}")
+            # کاراکترهای مارک‌داون را خنثی کن
+            safe = display.replace('[', '(').replace(']', ')').replace('`', "'")
+            if clickable:
+                return f"[{safe}](tg://user?id={int(user_id)}) | `{user_id}`"
+            return f"{display} | {user_id}"
+        except Exception:
+            if clickable:
+                return f"[کاربر {user_id}](tg://user?id={int(user_id)}) | `{user_id}`"
             return f"کاربر {user_id}"
     
     def format_status_info(self, settings):
@@ -5500,18 +5601,28 @@ class SelfBotManager:
                     logger.error(f"خطا در گزارش حذف رسانه {msg_id}: {e}")
                     if msg_id in media_cache:
                         del media_cache[msg_id]
-            for (chat_id, cached_msg_id), text in list(message_cache.items()):
+            for (chat_id, cached_msg_id), cached in list(message_cache.items()):
                 if cached_msg_id == msg_id:
                     try:
-                        sender_info = await self.get_user_info(chat_id)
+                        if isinstance(cached, dict):
+                            text = cached.get('text', '')
+                            sender_id = cached.get('sender_id') or chat_id
+                            owner = cached.get('owner_id')
+                            if owner and str(owner) != str(self.user_id):
+                                continue
+                        else:
+                            text = str(cached)
+                            sender_id = chat_id
+                        sender_info = await self.get_user_info(sender_id)
                         chat_title = await self.get_chat_title(chat_id)
                         report_text = (
                             f"🗑️ پیام متنی حذف‌شده\n"
                             f"👤 از: {sender_info}\n"
                             f"💬 چت: {chat_title}\n"
-                            f"🆔 پیام: {msg_id}\n"
+                            f"🆔 پیام: `{msg_id}`\n"
                             f"📝 متن پیام:\n{text[:1000] or 'بدون متن'}\n"
-                            f"🕒 زمان: {get_now().strftime('%Y/%m/%d %H:%M:%S')}"
+                            f"🕒 زمان: {get_now().strftime('%Y/%m/%d %H:%M:%S')}\n"
+                            f"🔗 کلیک روی اسم → پیوی کاربر"
                         )
                         await self.send_report(report_text)
                         del message_cache[(chat_id, msg_id)]
@@ -5525,10 +5636,28 @@ class SelfBotManager:
             message = event.message
             if not message:
                 return
+            # کش متن/رسانه برای گزارش حذف (گروه + پیوی)
+            try:
+                if message.text and not message.out:
+                    sender_id = message.sender_id or (message.peer_id.user_id if isinstance(message.peer_id, PeerUser) else None)
+                    peer = message.peer_id
+                    if isinstance(peer, PeerUser):
+                        chat_key = peer.user_id
+                    elif hasattr(peer, 'channel_id'):
+                        chat_key = peer.channel_id
+                    elif hasattr(peer, 'chat_id'):
+                        chat_key = peer.chat_id
+                    else:
+                        chat_key = getattr(message, 'chat_id', None)
+                    if sender_id and chat_key is not None:
+                        message_cache[(chat_key, message.id)] = {
+                            'text': message.text,
+                            'sender_id': int(sender_id),
+                            'owner_id': self.user_id,
+                        }
+            except Exception as _ce:
+                logger.debug(f"message cache: {_ce}")
             if isinstance(message.peer_id, PeerUser) and not message.out:
-                if message.text:
-                    chat_id = message.peer_id.user_id
-                    message_cache[(chat_id, message.id)] = message.text
                 if message.media:
                     media_type = self.get_media_type(message)
                     if media_type:
@@ -5767,16 +5896,29 @@ class SelfBotManager:
         try:
             if self.report_config.report_group_id:
                 if media_path and os.path.exists(media_path):
-                    await self.client.send_file(self.report_config.report_group_id, media_path, caption=caption or report_text)
+                    await self.client.send_file(
+                        self.report_config.report_group_id, media_path,
+                        caption=caption or report_text, parse_mode='md'
+                    )
                     logger.info(f"گزارش با فایل ارسال شد: {media_path}")
                 else:
-                    await self.client.send_message(self.report_config.report_group_id, report_text)
+                    await self.client.send_message(
+                        self.report_config.report_group_id, report_text, parse_mode='md'
+                    )
                     logger.info(f"گزارش متنی ارسال شد")
                 return True
             return False
         except Exception as e:
-            logger.error(f"خطا در ارسال گزارش: {e}")
-            return False
+            # fallback بدون parse_mode
+            try:
+                if media_path and os.path.exists(media_path):
+                    await self.client.send_file(self.report_config.report_group_id, media_path, caption=caption or report_text)
+                else:
+                    await self.client.send_message(self.report_config.report_group_id, report_text)
+                return True
+            except Exception as e2:
+                logger.error(f"خطا در ارسال گزارش: {e} / {e2}")
+                return False
     
     async def get_chat_title(self, chat_id):
         try:
@@ -6022,129 +6164,23 @@ def _load_panel_base_image():
 
 def clean_display_name(name: str) -> str:
     """
-    اسم کاربر را برای بنر قابل‌خواندن می‌کند:
-    فونت‌های فانتزی تلگرام (ریاضی، کانادایی، چروکی، IPA و ...) → حروف لاتین معمولی.
+    اسم واقعی کاربر برای بنر:
+    فقط ساعت و پرچم و جداکننده‌ها حذف می‌شوند.
+    فونت‌های فانتزی در صورت امکان حفظ می‌شوند؛ در غیر این صورت به لاتین نزدیک تبدیل می‌شوند.
     """
     if not name:
         return "User"
     import re
     import unicodedata
-
     s = str(name).strip()
     try:
         s = unicodedata.normalize('NFKC', s)
     except Exception:
         pass
-
-    # جدول lookalike گسترده برای اسم‌های فانتزی تلگرام
-    LOOKALIKE = {
-        # Canadian Aboriginal / aesthetic
-        'ᣵ': 'v', 'ᑋ': 'h', 'ᣔ': 'd', 'ᣕ': 'k', 'ᐪ': 'k', 'ᐱ': 'p', 'ᐯ': 'v',
-        'ᑕ': 'd', 'ᑌ': 'u', 'ᑎ': 'n', 'ᑭ': 'k', 'ᒪ': 'l', 'ᒥ': 'm', 'ᓂ': 'n',
-        'ᓄ': 'o', 'ᓭ': 's', 'ᔕ': 's', 'ᕼ': 'h', 'ᖇ': 'r', 'ᖴ': 'f', 'ᗩ': 'a',
-        'ᗷ': 'b', 'ᑕ': 'c', 'ᗪ': 'd', 'ᕮ': 'e', 'ᖴ': 'f', 'ᘜ': 'g', 'ᕼ': 'h',
-        'Ꭵ': 'i', 'ᒎ': 'j', 'Ꮶ': 'k', 'ᒪ': 'l', 'ᗰ': 'm', 'ᑎ': 'n', 'ᝪ': 'o',
-        'ᑭ': 'p', 'ᑫ': 'q', 'ᖇ': 'r', 'ᔕ': 's', 'Ꭲ': 't', 'ᑌ': 'u', 'ᐯ': 'v',
-        'ᗯ': 'w', '᙭': 'x', 'ᖻ': 'y', 'Ꮓ': 'z',
-        # IPA / Latin extensions
-        'ɨ': 'i', 'ɪ': 'i', 'ɩ': 'i', 'ι': 'i', 'і': 'i', '¡': 'i', 'ı': 'i',
-        'ɑ': 'a', 'а': 'a', 'α': 'a', 'ʌ': 'a', 'ɐ': 'a',
-        'ʙ': 'b', 'в': 'b', 'ɓ': 'b',
-        'ϲ': 'c', 'с': 'c', 'ƈ': 'c', '¢': 'c',
-        'ԁ': 'd', 'ɗ': 'd', 'đ': 'd',
-        'е': 'e', 'ε': 'e', 'ҽ': 'e', 'ɛ': 'e',
-        'ғ': 'f', 'ƒ': 'f',
-        'ɢ': 'g', 'ɡ': 'g', 'ց': 'g',
-        'һ': 'h', 'н': 'h', 'ɦ': 'h',
-        'ј': 'j', 'ʝ': 'j',
-        'κ': 'k', 'к': 'k', 'ƙ': 'k',
-        'ʟ': 'l', 'Ɩ': 'l', 'ł': 'l',
-        'м': 'm', 'ɱ': 'm',
-        'ո': 'n', 'п': 'n', 'ɲ': 'n',
-        'ο': 'o', 'о': 'o', 'օ': 'o', 'σ': 'o', 'ø': 'o',
-        'ρ': 'p', 'р': 'p', 'ք': 'p',
-        'q': 'q',
-        'ʀ': 'r', 'г': 'r', 'ɾ': 'r',
-        'ѕ': 's', 'ʂ': 's',
-        'τ': 't', 'т': 't', 'ƭ': 't',
-        'υ': 'u', 'ц': 'u', 'υ': 'u',
-        'ν': 'v', 'ѵ': 'v',
-        'ω': 'w', 'ш': 'w', 'ա': 'w',
-        'χ': 'x', 'х': 'x',
-        'у': 'y', 'ү': 'y', 'ყ': 'y',
-        'ᴢ': 'z', 'ʐ': 'z',
-        # Small caps
-        'ᴀ': 'a', 'ʙ': 'b', 'ᴄ': 'c', 'ᴅ': 'd', 'ᴇ': 'e', 'ғ': 'f', 'ɢ': 'g',
-        'ʜ': 'h', 'ɪ': 'i', 'ᴊ': 'j', 'ᴋ': 'k', 'ʟ': 'l', 'ᴍ': 'm', 'ɴ': 'n',
-        'ᴏ': 'o', 'ᴘ': 'p', 'ǫ': 'q', 'ʀ': 'r', 's': 's', 'ᴛ': 't', 'ᴜ': 'u',
-        'ᴠ': 'v', 'ᴡ': 'w', 'x': 'x', 'ʏ': 'y', 'ᴢ': 'z',
-        # Superscript/subscript letters
-        'ᵃ': 'a', 'ᵇ': 'b', 'ᶜ': 'c', 'ᵈ': 'd', 'ᵉ': 'e', 'ᶠ': 'f', 'ᵍ': 'g',
-        'ʰ': 'h', 'ⁱ': 'i', 'ʲ': 'j', 'ᵏ': 'k', 'ˡ': 'l', 'ᵐ': 'm', 'ⁿ': 'n',
-        'ᵒ': 'o', 'ᵖ': 'p', 'ʳ': 'r', 'ˢ': 's', 'ᵗ': 't', 'ᵘ': 'u', 'ᵛ': 'v',
-        'ʷ': 'w', 'ˣ': 'x', 'ʸ': 'y', 'ᶻ': 'z',
-    }
-
-    def _map_fancy_char(ch: str) -> str:
-        if ch in LOOKALIKE:
-            return LOOKALIKE[ch]
-        o = ord(ch)
-        for base in [0x1D7CE, 0x1D7D8, 0x1D7E2, 0x1D7EC, 0x1D7F6]:
-            if base <= o <= base + 9:
-                return chr(ord('0') + (o - base))
-        if 0xFF10 <= o <= 0xFF19:
-            return chr(ord('0') + (o - 0xFF10))
-        ranges = [
-            (0x1D400, 0x1D419, 'A'), (0x1D41A, 0x1D433, 'a'),
-            (0x1D434, 0x1D44D, 'A'), (0x1D44E, 0x1D467, 'a'),
-            (0x1D468, 0x1D481, 'A'), (0x1D482, 0x1D49B, 'a'),
-            (0x1D4D0, 0x1D4E9, 'A'), (0x1D4EA, 0x1D503, 'a'),
-            (0x1D56C, 0x1D585, 'A'), (0x1D586, 0x1D59F, 'a'),
-            (0x1D5A0, 0x1D5B9, 'A'), (0x1D5BA, 0x1D5D3, 'a'),
-            (0x1D5D4, 0x1D5ED, 'A'), (0x1D5EE, 0x1D607, 'a'),
-            (0x1D608, 0x1D621, 'A'), (0x1D622, 0x1D63B, 'a'),
-            (0x1D63C, 0x1D655, 'A'), (0x1D656, 0x1D66F, 'a'),
-            (0x1D670, 0x1D689, 'A'), (0x1D68A, 0x1D6A3, 'a'),
-            (0x1D504, 0x1D51C, 'A'), (0x1D51E, 0x1D537, 'a'),
-            (0x1D538, 0x1D550, 'A'), (0x1D552, 0x1D56B, 'a'),
-            (0x1D49C, 0x1D4B5, 'A'), (0x1D4B6, 0x1D4CF, 'a'),
-        ]
-        for start, end, base_ch in ranges:
-            if start <= o <= end:
-                return chr(ord(base_ch) + (o - start))
-        if 0xFF21 <= o <= 0xFF3A:
-            return chr(ord('A') + (o - 0xFF21))
-        if 0xFF41 <= o <= 0xFF5A:
-            return chr(ord('a') + (o - 0xFF41))
-        if 0x24B6 <= o <= 0x24CF:
-            return chr(ord('A') + (o - 0x24B6))
-        if 0x24D0 <= o <= 0x24E9:
-            return chr(ord('a') + (o - 0x24D0))
-        # حروف پایه لاتین/فارسی/عربی/ارقام
-        if ('A' <= ch <= 'Z') or ('a' <= ch <= 'z') or ('0' <= ch <= '9') or ch.isspace():
-            return ch
-        if '\u0600' <= ch <= '\u06FF' or '\uFB50' <= ch <= '\uFDFF':
-            return ch  # فارسی/عربی
-        # بقیه یونیکدهای ناشناخته را حذف نکن — تبدیل به ? نکن، فقط رد کن
-        cat = unicodedata.category(ch)
-        if cat.startswith('L') or cat.startswith('N'):
-            # سعی کن نام یونیکد را به حرف نزدیک تقریب بزنی
-            try:
-                uname = unicodedata.name(ch, '')
-                for letter in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ':
-                    if f' LETTER {letter}' in uname or uname.endswith(f' {letter}'):
-                        return letter.lower() if 'SMALL' in uname else letter
-            except Exception:
-                pass
-            return ''  # حرف ناشناس که فونت ندارد → خالی
-        return ''
-
-    s = ''.join(_map_fancy_char(c) for c in s)
-    for ch in ('『', '』', '【', '】', '「', '」', '‹', '›', '«', '»', '•', '·'):
-        s = s.replace(ch, ' ')
+    # حذف پرچم و ساعت
     s = re.sub(r'[\U0001F1E0-\U0001F1FF]+', ' ', s)
     s = re.sub(r'[|｜]?\s*[0-9۰-۹]{1,2}\s*[:：٫.]\s*[0-9۰-۹]{1,2}', ' ', s)
-    for ch in ('_', '*', '`', '[', ']', '\n', '\r', '|', '｜', '@'):
+    for ch in ('_', '*', '`', '[', ']', '\n', '\r', '|', '｜', '@', '『', '』', '【', '】'):
         s = s.replace(ch, ' ')
     s = ' '.join(s.split())
     return s or "User"
@@ -6191,8 +6227,41 @@ def _composite_panel(username: str, avatar_path: str = None) -> str:
             except Exception as e:
                 logger.debug(f"avatar composite: {e}")
 
-        # اسم خالص بدون تایم/پرچم — کوتاه و خوانا
+        # اسم خالص بدون تایم/پرچم — همان اسم کاربر
         raw_name = clean_display_name(username or "User")
+        # اگر فونت نتواند بعضی حروف فانتزی را بکشد، به lookalike تبدیل کن
+        try:
+            from PIL import ImageFont as _IF
+            _test_font = None
+            for _fp in ("/usr/share/fonts/truetype/freefont/FreeSerif.ttf",
+                        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"):
+                if os.path.exists(_fp):
+                    try:
+                        _test_font = _IF.truetype(_fp, 40)
+                        break
+                    except Exception:
+                        pass
+            if _test_font is not None:
+                mapped = []
+                for ch in raw_name:
+                    try:
+                        if _test_font.getmask(ch).getbbox() is None:
+                            # unmapped → try name-based latin
+                            import unicodedata as _ud
+                            un = _ud.name(ch, '')
+                            found = ''
+                            for letter in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ':
+                                if f' LETTER {letter}' in un:
+                                    found = letter.lower() if 'SMALL' in un else letter
+                                    break
+                            mapped.append(found if found else ch)
+                        else:
+                            mapped.append(ch)
+                    except Exception:
+                        mapped.append(ch)
+                raw_name = ''.join(mapped) or raw_name
+        except Exception:
+            pass
         if len(raw_name) > 28:
             parts = raw_name.split()
             if len(parts) >= 2:
@@ -6213,6 +6282,8 @@ def _composite_panel(username: str, avatar_path: str = None) -> str:
 
         draw = ImageDraw.Draw(img, 'RGBA')
         font_candidates = [
+            "/usr/share/fonts/truetype/freefont/FreeSerifBold.ttf",
+            "/usr/share/fonts/truetype/freefont/FreeSerif.ttf",
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
             "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
             "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
@@ -6756,7 +6827,8 @@ def get_tools_menu_keyboard(user_id):
             InlineKeyboardButton(f"{'✓ ' if not self_on else ''}⛔ سلف خاموش", callback_data=f"exec_self_off_{user_id}", style="danger" if not self_on else "primary")
         ],
         [
-            InlineKeyboardButton("🎨 ساخت استیکر", callback_data=f"exec_make_sticker_{user_id}", style="success")
+            InlineKeyboardButton("🎨 ساخت استیکر", callback_data=f"exec_make_sticker_{user_id}", style="success"),
+            InlineKeyboardButton("🔢 ایدی عددی", callback_data=f"exec_numeric_id_help_{user_id}", style="primary"),
         ],
         [
             InlineKeyboardButton("📖 راهنما", callback_data=f"exec_tools_help_{user_id}", style="primary")
@@ -8114,6 +8186,24 @@ async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         await msg.edit_text("🎨 لطفاً پیام را به فرمت زیر ارسال کنید:\n\nاستیکر متن [متن]")
         return
     
+    if cmd == 'numeric_id_help':
+        help_txt = (
+            "🔢 ایدی عددی و باز کردن پیوی\n\n"
+            "• دستور: `پیوی 123456789`\n"
+            "  → اطلاعات کاربر + لینک کلیک‌خور به پیوی\n\n"
+            "• در گزارش حذف پیام، روی اسم کاربر بزن تا پیوی باز شود\n"
+            "  (حتی اگر یوزرنیم نداشته باشد)\n\n"
+            "• مثال:\n`پیوی 52626727`"
+        )
+        try:
+            await safe_edit_panel(query, help_txt, reply_markup=get_tools_menu_keyboard(user_id))
+        except Exception:
+            try:
+                await context.bot.send_message(chat_id=chat_id, text=help_txt, parse_mode='Markdown')
+            except Exception:
+                pass
+        return
+
     if cmd == 'make_sticker':
         await msg.edit_text("🎨 ساخت استیکر:\n\nروی پیام کاربر ریپلای کنید و بنویسید:\n`ساخت استیکر`\n\nاستیکر نقل‌قول از @QuotLyBot بدون فوروارد و بدون متن ارسال می‌شود و چت با ربات پاک می‌شود.")
         return
@@ -9218,6 +9308,16 @@ async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYP
                 await context.bot.send_message(chat_id=chat_id, text=text, parse_mode='HTML')
             except Exception:
                 pass
+        # کارت تصویری
+        try:
+            lines = [ln.strip() for ln in text.replace("<b>","").replace("</b>","").replace("<code>","").replace("</code>","").split("\n") if ln.strip()]
+            chart = await render_crypto_chart_image("بازار جهانی", lines[1:16] if len(lines)>1 else lines)
+            if chart and os.path.exists(chart):
+                await context.bot.send_photo(chat_id=chat_id, photo=open(chart,'rb'), caption="💎 نرخ لحظه‌ای")
+                try: os.remove(chart)
+                except: pass
+        except Exception as _ce:
+            logger.debug(f"crypto chart send: {_ce}")
         return
     if cmd == 'crypto_premium':
         text = await compile_crypto_premium_text()
