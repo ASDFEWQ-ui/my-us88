@@ -77,7 +77,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InlineQ
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes, InlineQueryHandler
 from telegram.request import HTTPXRequest
 from telethon import TelegramClient, events, types
-from telethon.tl.types import PeerUser, PeerChannel, PeerChat, MessageMediaPhoto, MessageMediaDocument, ReactionEmoji, MessageEntityBold, MessageEntityUnderline, MessageEntityStrike, MessageEntityBlockquote, MessageEntitySpoiler, MessageEntityItalic, MessageEntityCode, MessageEntityPre, InputMediaDice
+from telethon.tl.types import PeerUser, PeerChannel, PeerChat, MessageMediaPhoto, MessageMediaDocument, MessageMediaWebPage, ReactionEmoji, MessageEntityBold, MessageEntityUnderline, MessageEntityStrike, MessageEntityBlockquote, MessageEntitySpoiler, MessageEntityItalic, MessageEntityCode, MessageEntityPre, InputMediaDice
 from telethon.tl.functions.messages import SendReactionRequest, DeleteMessagesRequest, SetTypingRequest, ToggleDialogPinRequest
 from telethon.tl.functions.account import UpdateProfileRequest, UpdateStatusRequest, GetAuthorizationsRequest
 from telethon.tl.functions.contacts import BlockRequest, UnblockRequest
@@ -6022,10 +6022,8 @@ def _load_panel_base_image():
 
 def clean_display_name(name: str) -> str:
     """
-    اسم واقعی کاربر را برای بنر آماده می‌کند:
-    - فونت‌های فانتزی/ریاضی/پررنگ تلگرام → حروف معمولی خوانا (بدون خط‌خطی)
-    - ساعت و پرچم حذف می‌شود
-    - ایموجی‌های ساده در اسم حفظ می‌شوند اگر جا باشد
+    اسم کاربر را برای بنر قابل‌خواندن می‌کند:
+    فونت‌های فانتزی تلگرام (ریاضی، کانادایی، چروکی، IPA و ...) → حروف لاتین معمولی.
     """
     if not name:
         return "User"
@@ -6033,97 +6031,122 @@ def clean_display_name(name: str) -> str:
     import unicodedata
 
     s = str(name).strip()
-
-    # نرمال‌سازی پایه (fullwidth و ترکیب‌ها)
     try:
         s = unicodedata.normalize('NFKC', s)
     except Exception:
         pass
 
-    # تبدیل بازه‌های فونت ریاضی/فانتزی تلگرام به ASCII
-    # Mathematical Bold/Italic/Script/Fraktur/Double-struck/Sans-serif/...
+    # جدول lookalike گسترده برای اسم‌های فانتزی تلگرام
+    LOOKALIKE = {
+        # Canadian Aboriginal / aesthetic
+        'ᣵ': 'v', 'ᑋ': 'h', 'ᣔ': 'd', 'ᣕ': 'k', 'ᐪ': 'k', 'ᐱ': 'p', 'ᐯ': 'v',
+        'ᑕ': 'd', 'ᑌ': 'u', 'ᑎ': 'n', 'ᑭ': 'k', 'ᒪ': 'l', 'ᒥ': 'm', 'ᓂ': 'n',
+        'ᓄ': 'o', 'ᓭ': 's', 'ᔕ': 's', 'ᕼ': 'h', 'ᖇ': 'r', 'ᖴ': 'f', 'ᗩ': 'a',
+        'ᗷ': 'b', 'ᑕ': 'c', 'ᗪ': 'd', 'ᕮ': 'e', 'ᖴ': 'f', 'ᘜ': 'g', 'ᕼ': 'h',
+        'Ꭵ': 'i', 'ᒎ': 'j', 'Ꮶ': 'k', 'ᒪ': 'l', 'ᗰ': 'm', 'ᑎ': 'n', 'ᝪ': 'o',
+        'ᑭ': 'p', 'ᑫ': 'q', 'ᖇ': 'r', 'ᔕ': 's', 'Ꭲ': 't', 'ᑌ': 'u', 'ᐯ': 'v',
+        'ᗯ': 'w', '᙭': 'x', 'ᖻ': 'y', 'Ꮓ': 'z',
+        # IPA / Latin extensions
+        'ɨ': 'i', 'ɪ': 'i', 'ɩ': 'i', 'ι': 'i', 'і': 'i', '¡': 'i', 'ı': 'i',
+        'ɑ': 'a', 'а': 'a', 'α': 'a', 'ʌ': 'a', 'ɐ': 'a',
+        'ʙ': 'b', 'в': 'b', 'ɓ': 'b',
+        'ϲ': 'c', 'с': 'c', 'ƈ': 'c', '¢': 'c',
+        'ԁ': 'd', 'ɗ': 'd', 'đ': 'd',
+        'е': 'e', 'ε': 'e', 'ҽ': 'e', 'ɛ': 'e',
+        'ғ': 'f', 'ƒ': 'f',
+        'ɢ': 'g', 'ɡ': 'g', 'ց': 'g',
+        'һ': 'h', 'н': 'h', 'ɦ': 'h',
+        'ј': 'j', 'ʝ': 'j',
+        'κ': 'k', 'к': 'k', 'ƙ': 'k',
+        'ʟ': 'l', 'Ɩ': 'l', 'ł': 'l',
+        'м': 'm', 'ɱ': 'm',
+        'ո': 'n', 'п': 'n', 'ɲ': 'n',
+        'ο': 'o', 'о': 'o', 'օ': 'o', 'σ': 'o', 'ø': 'o',
+        'ρ': 'p', 'р': 'p', 'ք': 'p',
+        'q': 'q',
+        'ʀ': 'r', 'г': 'r', 'ɾ': 'r',
+        'ѕ': 's', 'ʂ': 's',
+        'τ': 't', 'т': 't', 'ƭ': 't',
+        'υ': 'u', 'ц': 'u', 'υ': 'u',
+        'ν': 'v', 'ѵ': 'v',
+        'ω': 'w', 'ш': 'w', 'ա': 'w',
+        'χ': 'x', 'х': 'x',
+        'у': 'y', 'ү': 'y', 'ყ': 'y',
+        'ᴢ': 'z', 'ʐ': 'z',
+        # Small caps
+        'ᴀ': 'a', 'ʙ': 'b', 'ᴄ': 'c', 'ᴅ': 'd', 'ᴇ': 'e', 'ғ': 'f', 'ɢ': 'g',
+        'ʜ': 'h', 'ɪ': 'i', 'ᴊ': 'j', 'ᴋ': 'k', 'ʟ': 'l', 'ᴍ': 'm', 'ɴ': 'n',
+        'ᴏ': 'o', 'ᴘ': 'p', 'ǫ': 'q', 'ʀ': 'r', 's': 's', 'ᴛ': 't', 'ᴜ': 'u',
+        'ᴠ': 'v', 'ᴡ': 'w', 'x': 'x', 'ʏ': 'y', 'ᴢ': 'z',
+        # Superscript/subscript letters
+        'ᵃ': 'a', 'ᵇ': 'b', 'ᶜ': 'c', 'ᵈ': 'd', 'ᵉ': 'e', 'ᶠ': 'f', 'ᵍ': 'g',
+        'ʰ': 'h', 'ⁱ': 'i', 'ʲ': 'j', 'ᵏ': 'k', 'ˡ': 'l', 'ᵐ': 'm', 'ⁿ': 'n',
+        'ᵒ': 'o', 'ᵖ': 'p', 'ʳ': 'r', 'ˢ': 's', 'ᵗ': 't', 'ᵘ': 'u', 'ᵛ': 'v',
+        'ʷ': 'w', 'ˣ': 'x', 'ʸ': 'y', 'ᶻ': 'z',
+    }
+
     def _map_fancy_char(ch: str) -> str:
+        if ch in LOOKALIKE:
+            return LOOKALIKE[ch]
         o = ord(ch)
-        # Digits: Mathematical Bold/Double-struck/Sans/Monospace 0-9
-        digit_bases = [
-            0x1D7CE, 0x1D7D8, 0x1D7E2, 0x1D7EC, 0x1D7F6,  # math digits
-        ]
-        for base in digit_bases:
+        for base in [0x1D7CE, 0x1D7D8, 0x1D7E2, 0x1D7EC, 0x1D7F6]:
             if base <= o <= base + 9:
                 return chr(ord('0') + (o - base))
-        # Fullwidth digits
         if 0xFF10 <= o <= 0xFF19:
             return chr(ord('0') + (o - 0xFF10))
-        # Latin mathematical styles (A-Z / a-z blocks)
-        # Bold A-Z 1D400-1D419, a-z 1D41A-1D433
         ranges = [
-            (0x1D400, 0x1D419, 'A'), (0x1D41A, 0x1D433, 'a'),  # bold
-            (0x1D434, 0x1D44D, 'A'), (0x1D44E, 0x1D467, 'a'),  # italic
-            (0x1D468, 0x1D481, 'A'), (0x1D482, 0x1D49B, 'a'),  # bold italic
-            (0x1D4D0, 0x1D4E9, 'A'), (0x1D4EA, 0x1D503, 'a'),  # bold script
-            (0x1D56C, 0x1D585, 'A'), (0x1D586, 0x1D59F, 'a'),  # bold fraktur
-            (0x1D5A0, 0x1D5B9, 'A'), (0x1D5BA, 0x1D5D3, 'a'),  # sans
-            (0x1D5D4, 0x1D5ED, 'A'), (0x1D5EE, 0x1D607, 'a'),  # sans bold
-            (0x1D608, 0x1D621, 'A'), (0x1D622, 0x1D63B, 'a'),  # sans italic
-            (0x1D63C, 0x1D655, 'A'), (0x1D656, 0x1D66F, 'a'),  # sans bold italic
-            (0x1D670, 0x1D689, 'A'), (0x1D68A, 0x1D6A3, 'a'),  # monospace
-            (0x1D504, 0x1D51C, 'A'), (0x1D51E, 0x1D537, 'a'),  # fraktur (gaps)
-            (0x1D538, 0x1D550, 'A'), (0x1D552, 0x1D56B, 'a'),  # double-struck
-            (0x1D49C, 0x1D4B5, 'A'), (0x1D4B6, 0x1D4CF, 'a'),  # script
+            (0x1D400, 0x1D419, 'A'), (0x1D41A, 0x1D433, 'a'),
+            (0x1D434, 0x1D44D, 'A'), (0x1D44E, 0x1D467, 'a'),
+            (0x1D468, 0x1D481, 'A'), (0x1D482, 0x1D49B, 'a'),
+            (0x1D4D0, 0x1D4E9, 'A'), (0x1D4EA, 0x1D503, 'a'),
+            (0x1D56C, 0x1D585, 'A'), (0x1D586, 0x1D59F, 'a'),
+            (0x1D5A0, 0x1D5B9, 'A'), (0x1D5BA, 0x1D5D3, 'a'),
+            (0x1D5D4, 0x1D5ED, 'A'), (0x1D5EE, 0x1D607, 'a'),
+            (0x1D608, 0x1D621, 'A'), (0x1D622, 0x1D63B, 'a'),
+            (0x1D63C, 0x1D655, 'A'), (0x1D656, 0x1D66F, 'a'),
+            (0x1D670, 0x1D689, 'A'), (0x1D68A, 0x1D6A3, 'a'),
+            (0x1D504, 0x1D51C, 'A'), (0x1D51E, 0x1D537, 'a'),
+            (0x1D538, 0x1D550, 'A'), (0x1D552, 0x1D56B, 'a'),
+            (0x1D49C, 0x1D4B5, 'A'), (0x1D4B6, 0x1D4CF, 'a'),
         ]
         for start, end, base_ch in ranges:
             if start <= o <= end:
                 return chr(ord(base_ch) + (o - start))
-        # Fullwidth Latin
         if 0xFF21 <= o <= 0xFF3A:
             return chr(ord('A') + (o - 0xFF21))
         if 0xFF41 <= o <= 0xFF5A:
             return chr(ord('a') + (o - 0xFF41))
-        # Circled Latin
         if 0x24B6 <= o <= 0x24CF:
             return chr(ord('A') + (o - 0x24B6))
         if 0x24D0 <= o <= 0x24E9:
             return chr(ord('a') + (o - 0x24D0))
-        # Parenthesized
-        if 0x249C <= o <= 0x24B5:
-            return chr(ord('a') + (o - 0x249C))
-        return ch
+        # حروف پایه لاتین/فارسی/عربی/ارقام
+        if ('A' <= ch <= 'Z') or ('a' <= ch <= 'z') or ('0' <= ch <= '9') or ch.isspace():
+            return ch
+        if '\u0600' <= ch <= '\u06FF' or '\uFB50' <= ch <= '\uFDFF':
+            return ch  # فارسی/عربی
+        # بقیه یونیکدهای ناشناخته را حذف نکن — تبدیل به ? نکن، فقط رد کن
+        cat = unicodedata.category(ch)
+        if cat.startswith('L') or cat.startswith('N'):
+            # سعی کن نام یونیکد را به حرف نزدیک تقریب بزنی
+            try:
+                uname = unicodedata.name(ch, '')
+                for letter in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ':
+                    if f' LETTER {letter}' in uname or uname.endswith(f' {letter}'):
+                        return letter.lower() if 'SMALL' in uname else letter
+            except Exception:
+                pass
+            return ''  # حرف ناشناس که فونت ندارد → خالی
+        return ''
 
     s = ''.join(_map_fancy_char(c) for c in s)
-
-    # جداکننده‌های تزئینی رایج
-    for ch in ('『', '』', '【', '】', '「', '」', '‹', '›', '«', '»', '•', '·', '▪', '▫', '◆', '◇'):
+    for ch in ('『', '』', '【', '】', '「', '」', '‹', '›', '«', '»', '•', '·'):
         s = s.replace(ch, ' ')
-
-    # پرچم منطقه‌ای
     s = re.sub(r'[\U0001F1E0-\U0001F1FF]+', ' ', s)
-    # ساعت
     s = re.sub(r'[|｜]?\s*[0-9۰-۹]{1,2}\s*[:：٫.]\s*[0-9۰-۹]{1,2}', ' ', s)
     for ch in ('_', '*', '`', '[', ']', '\n', '\r', '|', '｜', '@'):
         s = s.replace(ch, ' ')
-
-    # فقط کاراکترهای قابل نمایش: حروف/اعداد/فاصله/چند ایموجی رایج
-    out = []
-    for c in s:
-        cat = unicodedata.category(c)
-        if cat.startswith('L') or cat.startswith('N') or c.isspace():
-            out.append(c)
-        elif cat in ('So', 'Sk') and ord(c) > 0x1F000:
-            # ایموجی — حداکثر چند تا نگه دار
-            out.append(c)
-        # بقیه (کنترل، خط‌های عجیب) دور ریخته می‌شوند
-    s = ''.join(out)
     s = ' '.join(s.split())
-    # محدودیت ایموجی برای جلوگیری از شلوغی بنر
-    emoji_count = 0
-    filtered = []
-    for c in s:
-        if ord(c) > 0x1F000:
-            emoji_count += 1
-            if emoji_count > 3:
-                continue
-        filtered.append(c)
-    s = ''.join(filtered).strip()
     return s or "User"
 
 
@@ -7062,6 +7085,24 @@ def get_translate_menu_keyboard(user_id):
     ]
     return InlineKeyboardMarkup(keyboard)
 
+
+def get_crypto_menu_keyboard(user_id):
+    """منوی ارزها — نرخ / پریمیوم / استارز"""
+    keyboard = [
+        [
+            InlineKeyboardButton("📊 لیست شاخص‌ها", callback_data=f"exec_crypto_rates_{user_id}", style="primary"),
+            InlineKeyboardButton("💎 پریمیوم فرگمنت", callback_data=f"exec_crypto_premium_{user_id}", style="success"),
+        ],
+        [
+            InlineKeyboardButton("⭐ استارز فرگمنت", callback_data=f"exec_crypto_stars_{user_id}", style="primary"),
+            InlineKeyboardButton("📖 راهنما ارزها", callback_data=f"exec_crypto_help_{user_id}", style="primary"),
+        ],
+        [
+            InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main", style="danger")
+        ],
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
 def get_google_menu_keyboard(user_id):
     search_on = False
     if str(user_id) in selfbot_managers:
@@ -7602,9 +7643,22 @@ async def _button_callback_impl(update: Update, context: ContextTypes.DEFAULT_TY
                 except Exception:
                     pass
                 try:
-                    await query.message.delete()
+                    await query.answer("✖️ بسته شد")
                 except Exception:
                     pass
+                try:
+                    await query.message.delete()
+                except Exception:
+                    try:
+                        await query.edit_message_reply_markup(reply_markup=None)
+                    except Exception:
+                        try:
+                            await query.edit_message_caption(caption="✖️ پنل بسته شد", reply_markup=None)
+                        except Exception:
+                            try:
+                                await query.edit_message_text("✖️ پنل بسته شد")
+                            except Exception:
+                                pass
                 return
 
             # --- اکشن در پیوی هدف ---
