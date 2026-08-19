@@ -1316,6 +1316,7 @@ class MainDatabase:
         conn.close()
     
     def get_spam_settings(self, owner_id):
+        owner_id = str(owner_id)
         conn = sqlite3.connect(self.db_name)
         cursor = conn.cursor()
         cursor.execute('SELECT * FROM spam_settings WHERE owner_id = ?', (owner_id,))
@@ -1332,6 +1333,7 @@ class MainDatabase:
         }
     
     def set_spam_settings(self, owner_id, spam_protection=None, spam_limit=None, mute_duration=None):
+        owner_id = str(owner_id)
         conn = sqlite3.connect(self.db_name)
         cursor = conn.cursor()
         cursor.execute('SELECT id FROM spam_settings WHERE owner_id = ?', (owner_id,))
@@ -1756,7 +1758,7 @@ async def get_ai_response(text, ai_type, user_id=None):
         pass
     return None
 
-COMMAND_KEYWORDS = ('لیست', 'شروع', 'تایم', 'قلب', 'ماه', 'اطلاعات', 'دانلود', 'تاریخ', 'فعال', 'غیرفعال', 'حذف', 'ست', 'بولد', 'زیرخط', 'خط خورده', 'نقل قول', 'اسپویلر', 'کج', 'کد', 'پیش', 'اسپم', 'بلاک', 'ریکت', 'پیوی', 'گروه', 'درباره', 'من کی ام', 'قفل', 'باز', 'تنظیم', 'گروه گزارش', 'دشمن', 'دوست', 'دشمن گروه', 'دوست گروه', 'کانال', 'کامنت', 'تست', 'لیست دشمن', 'لیست اسپم', 'پاک کردن اسپم', 'حذف اسپم', 'اضافه اسپم', 'اتمام اسپم', 'تغییر اسم', 'تغییر بیو', 'تغییر پروفایل', 'پروف', 'اسپم روشن', 'اسپم خاموش', 'پینگ', 'سرچ', 'خروج سرچ', 'قلب پیشرفته', 'عشق', 'سنتت', 'هک', 'وضعیت', '.پنل', 'پنل', 'پنل کاربر', '/panel', '.اهنگ', 'تنظیم اسپم', 'سلف روشن', 'سلف خاموش', 'پین', 'تگ ادمین', 'امار گپ', '.کد', 'تقویم', 'فونت', 'انگلیسی', 'عربی', 'عبری', 'روسی', 'ترکی', 'اتوسین', 'تگ همه', 'لغو تگ', 'منشی', 'افزودن پاسخ', 'حذف پاسخ', 'لیست پاسخ', 'پاک کردن پاسخ‌ها', 'بولینگ', 'تاس', 'سه رنگ', 'شانس', 'تاریخ ساخت اکانت', 'نشست‌های فعال', 'اطلاعات سیستم', 'قیمت ارز', 'نرخ ارز', 'استیکر متن', 'ساخت استیکر', 'اسکرین‌شات', 'تشخیص متن', 'ساعت در بیو', 'ساعت در بیو ۲', 'بیو تاریخ', 'بیو کامل', 'بیو عاشقانه')
+COMMAND_KEYWORDS = ('لیست', 'شروع', 'تایم', 'قلب', 'ماه', 'اطلاعات', 'دانلود', 'تاریخ', 'فعال', 'غیرفعال', 'حذف', 'ست', 'بولد', 'زیرخط', 'خط خورده', 'نقل قول', 'اسپویلر', 'کج', 'کد', 'پیش', 'اسپم', 'بلاک', 'ریکت', 'پیوی', 'گروه', 'درباره', 'من کی ام', 'قفل', 'باز', 'تنظیم', 'گروه گزارش', 'دشمن', 'دوست', 'دشمن گروه', 'دوست گروه', 'کانال', 'کامنت', 'تست', 'لیست دشمن', 'لیست اسپم', 'پاک کردن اسپم', 'حذف اسپم', 'اضافه اسپم', 'اتمام اسپم', 'تغییر اسم', 'تغییر بیو', 'تغییر پروفایل', 'پروف', 'اسپم روشن', 'اسپم خاموش', 'پینگ', 'سرچ', 'خروج سرچ', 'قلب پیشرفته', 'عشق', 'سنتت', 'هک', 'وضعیت', '.پنل', 'پنل', 'پنل کاربر', '/panel', '.اهنگ', 'تنظیم اسپم', 'سلف روشن', 'سلف خاموش', 'پین', 'تگ ادمین', 'امار گپ', '.کد', 'تقویم', 'فونت', 'انگلیسی', 'عربی', 'عبری', 'روسی', 'ترکی', 'اتوسین', 'تگ همه', 'لغو تگ', 'منشی', 'افزودن پاسخ', 'حذف پاسخ', 'لیست پاسخ', 'پاک کردن پاسخ‌ها', 'بولینگ', 'تاس', 'سه رنگ', 'شانس', 'تاریخ ساخت اکانت', 'نشست‌های فعال', 'اطلاعات سیستم', 'قیمت ارز', 'نرخ ارز', 'استیکر متن', 'ساخت استیکر', 'اسکرین‌شات', 'تشخیص متن', 'ساعت در بیو', 'ساعت در بیو ۲', 'بیو تاریخ', 'بیو کامل', 'بیو عاشقانه', 'ترجمه', 'پروف')
 
 # نگاشت زبان‌های فارسی به کدهای استاندارد ISO که deep_translator تضمینی می‌شناسد
 TRANSLATE_LANG_CODES = {
@@ -1765,6 +1767,27 @@ TRANSLATE_LANG_CODES = {
     'hebrew': 'iw',
     'russian': 'ru',
     'turkish': 'tr',
+    'german': 'de',
+    'french': 'fr',
+    'spanish': 'es',
+    'italian': 'it',
+    'chinese': 'zh-CN',
+    'japanese': 'ja',
+    'korean': 'ko',
+    'hindi': 'hi',
+    'persian': 'fa',
+}
+LANG_NAME_FA = {
+    'english': 'انگلیسی', 'arabic': 'عربی', 'hebrew': 'عبری', 'russian': 'روسی',
+    'turkish': 'ترکی', 'german': 'آلمانی', 'french': 'فرانسوی', 'spanish': 'اسپانیایی',
+    'italian': 'ایتالیایی', 'chinese': 'چینی', 'japanese': 'ژاپنی', 'korean': 'کره‌ای',
+    'hindi': 'هندی', 'persian': 'فارسی',
+}
+FA_TO_LANG = {
+    'انگلیسی': 'english', 'عربی': 'arabic', 'عبری': 'hebrew', 'روسی': 'russian',
+    'ترکی': 'turkish', 'آلمانی': 'german', 'فرانسوی': 'french', 'اسپانیایی': 'spanish',
+    'ایتالیایی': 'italian', 'چینی': 'chinese', 'ژاپنی': 'japanese', 'کره‌ای': 'korean',
+    'هندی': 'hindi', 'فارسی': 'persian',
 }
 
 async def apply_text_style(message_text, style):
@@ -1870,11 +1893,10 @@ class SelfBotManager:
         self.active_actions = {}
         self.action_tasks = {}
         self.translate_mode = {
-            "english": False,
-            "arabic": False,
-            "hebrew": False,
-            "russian": False,
-            "turkish": False
+            "english": False, "arabic": False, "hebrew": False, "russian": False,
+            "turkish": False, "german": False, "french": False, "spanish": False,
+            "italian": False, "chinese": False, "japanese": False, "korean": False,
+            "hindi": False, "persian": False,
         }
         self.search_mode = False
         self.last_search_results = []
@@ -3432,13 +3454,7 @@ class SelfBotManager:
                     await event.edit(f"✅ قفل {lock_name} برای {target_name} غیرفعال شد")
                 return
         
-        translate_map = {
-            'انگلیسی': 'english',
-            'عربی': 'arabic',
-            'عبری': 'hebrew',
-            'روسی': 'russian',
-            'ترکی': 'turkish'
-        }
+        translate_map = dict(FA_TO_LANG)
         if cmd in translate_map and args:
             lang = translate_map[cmd]
             if args[0] == 'روشن' and len(args) == 1:
@@ -3820,6 +3836,104 @@ class SelfBotManager:
                 self.save_bio(new_bio)
                 await event.edit(f"✅ بیو به {new_bio} تغییر کرد")
                 return
+            elif args[0] == 'پروفایل' and len(args) == 1:
+                # تغییر پروفایل با ریپلای روی عکس
+                if not event.is_reply:
+                    await event.edit("⚠️ روی یک عکس ریپلای کنید و بنویسید: تغییر پروفایل")
+                    return
+                try:
+                    reply_msg = await event.get_reply_message()
+                    if not reply_msg or not reply_msg.media:
+                        await event.edit("⚠️ پیام ریپلای‌شده عکس نیست")
+                        return
+                    path = await self.client.download_media(reply_msg, file=os.path.join(MEDIA_FOLDER, f"setpf_{self.user_id}.jpg"))
+                    if not path or not os.path.exists(path):
+                        await event.edit("⚠️ دانلود عکس ناموفق")
+                        return
+                    try:
+                        me = await self.client.get_me()
+                        if me.photo:
+                            photos = await self.client.get_profile_photos('me', limit=1)
+                            if photos:
+                                await self.client(DeletePhotosRequest(id=[photos[0]]))
+                    except Exception:
+                        pass
+                    file = await self.client.upload_file(path)
+                    await self.client(UploadProfilePhotoRequest(file=file))
+                    try:
+                        os.remove(path)
+                    except Exception:
+                        pass
+                    await event.edit("✅ عکس پروفایل تغییر کرد")
+                except Exception as e:
+                    logger.error(f"تغییر پروفایل: {e}")
+                    await event.edit(f"❌ خطا: {str(e)[:80]}")
+                return
+        
+        # پروف / تغییر پروفایل (ریپلای عکس)
+        if cmd in ('پروف',) or (cmd == 'تغییر' and args and args[0] == 'پروفایل'):
+            if not event.is_reply:
+                await event.edit("⚠️ روی یک عکس ریپلای کنید")
+                return
+            try:
+                reply_msg = await event.get_reply_message()
+                path = await self.client.download_media(reply_msg, file=os.path.join(MEDIA_FOLDER, f"setpf_{self.user_id}.jpg"))
+                if not path or not os.path.exists(path):
+                    await event.edit("⚠️ دانلود عکس ناموفق — روی عکس ریپلای کنید")
+                    return
+                try:
+                    me = await self.client.get_me()
+                    if me.photo:
+                        photos = await self.client.get_profile_photos('me', limit=1)
+                        if photos:
+                            await self.client(DeletePhotosRequest(id=[photos[0]]))
+                except Exception:
+                    pass
+                file = await self.client.upload_file(path)
+                await self.client(UploadProfilePhotoRequest(file=file))
+                try:
+                    os.remove(path)
+                except Exception:
+                    pass
+                await event.edit("✅ عکس پروفایل ست شد")
+            except Exception as e:
+                logger.error(f"پروف: {e}")
+                await event.edit(f"❌ خطا: {str(e)[:80]}")
+            return
+        
+        # مترجم خودکار: ریپلای + ترجمه  /  ترجمه به زبان روسی
+        if cmd == 'ترجمه':
+            if not event.is_reply:
+                await event.edit("⚠️ روی متن ریپلای کنید\n• ترجمه → فارسی\n• ترجمه به زبان روسی → روسی")
+                return
+            try:
+                reply_msg = await event.get_reply_message()
+                src_text = (reply_msg.text or reply_msg.message or '').strip()
+                if not src_text:
+                    await event.edit("⚠️ پیام ریپلای‌شده متن ندارد")
+                    return
+                target = 'fa'
+                if args:
+                    # ترجمه به زبان روسی / ترجمه روسی / ترجمه به روسی
+                    joined = ' '.join(args)
+                    for fa, key in FA_TO_LANG.items():
+                        if fa in joined:
+                            target = TRANSLATE_LANG_CODES.get(key, 'fa')
+                            break
+                    if target == 'fa' and args[-1] in TRANSLATE_LANG_CODES:
+                        target = TRANSLATE_LANG_CODES[args[-1]]
+                try:
+                    from deep_translator import GoogleTranslator
+                    result = await asyncio.to_thread(
+                        lambda: GoogleTranslator(source='auto', target=target).translate(src_text)
+                    )
+                    await event.edit(result or "❌ ترجمه خالی")
+                except Exception as e:
+                    await event.edit(f"❌ خطا در ترجمه: {str(e)[:100]}")
+            except Exception as e:
+                logger.error(f"ترجمه: {e}")
+                await event.edit(f"❌ {str(e)[:80]}")
+            return
         
         if cmd == 'لیست' and args and args[0] == 'دشمن' and len(args) == 1:
             enemies = db.get_enemies(self.user_id, 'pv')
@@ -6737,34 +6851,35 @@ def get_action_menu_keyboard(user_id):
 def get_translate_menu_keyboard(user_id):
     translate_mode = {}
     if str(user_id) in selfbot_managers:
-        translate_mode = selfbot_managers[str(user_id)].translate_mode
+        translate_mode = dict(selfbot_managers[str(user_id)].translate_mode or {})
+    def _btn(flag, label, key, code):
+        on = bool(translate_mode.get(key))
+        return InlineKeyboardButton(
+            f"{'✓ ' if on else ''}{flag} {label}",
+            callback_data=f"exec_translate_{code}_{user_id}",
+            style="success" if on else "primary"
+        )
     keyboard = [
-        [
-            InlineKeyboardButton(f"🇬🇧 انگلیسی {'' if not translate_mode.get('english') else '✓'}", callback_data=f"exec_translate_en_{user_id}", style="success" if not translate_mode.get('english') else "primary"),
-            InlineKeyboardButton(f"🇸🇦 عربی {'' if not translate_mode.get('arabic') else '✓'}", callback_data=f"exec_translate_ar_{user_id}", style="success" if not translate_mode.get('arabic') else "primary")
-        ],
-        [
-            InlineKeyboardButton(f"🇮🇱 عبری {'' if not translate_mode.get('hebrew') else '✓'}", callback_data=f"exec_translate_he_{user_id}", style="success" if not translate_mode.get('hebrew') else "primary"),
-            InlineKeyboardButton(f"🇷🇺 روسی {'' if not translate_mode.get('russian') else '✓'}", callback_data=f"exec_translate_ru_{user_id}", style="success" if not translate_mode.get('russian') else "primary")
-        ],
-        [
-            InlineKeyboardButton(f"🇹🇷 ترکی {'' if not translate_mode.get('turkish') else '✓'}", callback_data=f"exec_translate_tr_{user_id}", style="success" if not translate_mode.get('turkish') else "primary")
-        ],
-        
-        [
-            InlineKeyboardButton("📖 راهنما", callback_data=f"exec_translate_help_{user_id}", style="primary")
-        ],
-        [
-            InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main", style="danger")
-        ]
+        [_btn("🇬🇧", "انگلیسی", "english", "en"), _btn("🇸🇦", "عربی", "arabic", "ar")],
+        [_btn("🇮🇱", "عبری", "hebrew", "he"), _btn("🇷🇺", "روسی", "russian", "ru")],
+        [_btn("🇹🇷", "ترکی", "turkish", "tr"), _btn("🇩🇪", "آلمانی", "german", "de")],
+        [_btn("🇫🇷", "فرانسوی", "french", "fr"), _btn("🇪🇸", "اسپانیایی", "spanish", "es")],
+        [_btn("🇮🇹", "ایتالیایی", "italian", "it"), _btn("🇨🇳", "چینی", "chinese", "zh")],
+        [_btn("🇯🇵", "ژاپنی", "japanese", "ja"), _btn("🇰🇷", "کره‌ای", "korean", "ko")],
+        [_btn("🇮🇳", "هندی", "hindi", "hi"), _btn("🇮🇷", "فارسی", "persian", "fa")],
+        [InlineKeyboardButton("📖 راهنما مترجم", callback_data=f"exec_translate_help_{user_id}", style="primary")],
+        [InlineKeyboardButton("⚈ بازگشت", callback_data=f"back_main", style="danger")],
     ]
     return InlineKeyboardMarkup(keyboard)
 
 def get_google_menu_keyboard(user_id):
+    search_on = False
+    if str(user_id) in selfbot_managers:
+        search_on = bool(getattr(selfbot_managers[str(user_id)], 'search_mode', False))
     keyboard = [
         [
-            InlineKeyboardButton("🔍 سرچ", callback_data=f"exec_search_on_{user_id}", style="success"),
-            InlineKeyboardButton("❌ خروج جستجو", callback_data=f"exec_search_off_{user_id}", style="danger"),
+            InlineKeyboardButton(f"{'✓ ' if search_on else ''}🔍 سرچ", callback_data=f"exec_search_on_{user_id}", style="success" if search_on else "primary"),
+            InlineKeyboardButton(f"{'✓ ' if not search_on else ''}❌ خروج جستجو", callback_data=f"exec_search_off_{user_id}", style="danger" if not search_on else "primary"),
             InlineKeyboardButton("🎵 اهنگ", callback_data=f"exec_music_{user_id}", style="primary")
         ],
         [
@@ -6945,10 +7060,12 @@ def build_filter_words_keyboard(user_id, filters):
     return InlineKeyboardMarkup(keyboard)
 
 def get_protection_menu_keyboard(user_id):
+    settings = db.get_spam_settings(user_id)
+    on = bool(settings.get('spam_protection'))
     keyboard = [
         [
-            InlineKeyboardButton("🛡️ اسپم روشن", callback_data=f"exec_spam_protection_on_{user_id}", style="success"),
-            InlineKeyboardButton("🛡️ اسپم خاموش", callback_data=f"exec_spam_protection_off_{user_id}", style="danger")
+            InlineKeyboardButton(f"{'✓ ' if on else ''}🛡️ اسپم روشن", callback_data=f"exec_spam_protection_on_{user_id}", style="success" if on else "primary"),
+            InlineKeyboardButton(f"{'✓ ' if not on else ''}🛡️ اسپم خاموش", callback_data=f"exec_spam_protection_off_{user_id}", style="danger" if not on else "primary")
         ],
         [
             InlineKeyboardButton("⚙️ تنظیم اسپم", callback_data=f"exec_spam_settings_{user_id}", style="primary"),
@@ -8320,22 +8437,23 @@ async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         return
 
     translate_commands = {
-        'translate_en': 'english',
-        'translate_ar': 'arabic',
-        'translate_he': 'hebrew',
-        'translate_ru': 'russian',
-        'translate_tr': 'turkish'
+        'translate_en': 'english', 'translate_ar': 'arabic', 'translate_he': 'hebrew',
+        'translate_ru': 'russian', 'translate_tr': 'turkish', 'translate_de': 'german',
+        'translate_fr': 'french', 'translate_es': 'spanish', 'translate_it': 'italian',
+        'translate_zh': 'chinese', 'translate_ja': 'japanese', 'translate_ko': 'korean',
+        'translate_hi': 'hindi', 'translate_fa': 'persian',
     }
     for cmd_prefix, lang in translate_commands.items():
-        if cmd.startswith(cmd_prefix):
-            manager.translate_mode[lang] = not manager.translate_mode[lang]
+        if cmd == cmd_prefix or cmd.startswith(cmd_prefix + '_'):
+            manager.translate_mode[lang] = not manager.translate_mode.get(lang, False)
             db.update_selfbot_setting(user_id, f'translate_{lang}', 1 if manager.translate_mode[lang] else 0)
-            status = "✓ روشن" if manager.translate_mode[lang] else "✗ خاموش"
-            await msg.edit_text(f"✅ ترجمه {lang} {status} شد")
             try:
-                await refresh_panel_keyboard(query, user_id, "🌐 ترجمه — به‌روز شد", get_translate_menu_keyboard)
-            except Exception as _panel_refresh_err:
-                print(f"⚠️ [DEBUG پنل] رفرش دکمه‌های پنل قدیمی fail شد (احتمالاً پیام قدیمی/غیرقابل‌دسترسه، مشکلی نیست چون خود عملیات انجام شده): {type(_panel_refresh_err).__name__}: {_panel_refresh_err}")
+                await refresh_panel_keyboard(query, user_id, "🌐 ترجمه", get_translate_menu_keyboard)
+            except Exception:
+                try:
+                    await query.edit_message_reply_markup(reply_markup=get_translate_menu_keyboard(user_id))
+                except Exception:
+                    pass
             return
     
     # advanced_heart / love / santet / hack — در پایین با _anim_target یکجا هندل می‌شوند
@@ -8640,39 +8758,43 @@ async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     if cmd == 'spam_protection_on':
         db.set_spam_settings(user_id, spam_protection=1)
         try:
-            if msg: await msg.delete()
+            await refresh_panel_keyboard(query, user_id, "حفاظت اسپم", get_protection_menu_keyboard)
         except Exception:
-            pass
-        try:
-            await refresh_panel_keyboard(query, user_id, " حفاظت اسپم", get_protection_menu_keyboard)
-        except Exception:
-            pass
+            try:
+                await query.edit_message_reply_markup(reply_markup=get_protection_menu_keyboard(user_id))
+            except Exception:
+                pass
         return
     if cmd == 'spam_protection_off':
         db.set_spam_settings(user_id, spam_protection=0)
         try:
-            if msg: await msg.delete()
+            await refresh_panel_keyboard(query, user_id, "حفاظت اسپم", get_protection_menu_keyboard)
         except Exception:
-            pass
-        try:
-            await refresh_panel_keyboard(query, user_id, " حفاظت اسپم", get_protection_menu_keyboard)
-        except Exception:
-            pass
+            try:
+                await query.edit_message_reply_markup(reply_markup=get_protection_menu_keyboard(user_id))
+            except Exception:
+                pass
         return
     if cmd == 'spam_settings':
-        await msg.edit_text("⚙️ تنظیم اسپم [تعداد] [زمان]\nمثال: تنظیم اسپم 5 10")
+        # بدون پیام اضافه — فقط راهنما در کپشن پنل
+        try:
+            await safe_edit_panel(query, "⚙️ در سلف بنویس:\nتنظیم اسپم [تعداد] [زمان]\nمثال: تنظیم اسپم 5 10", reply_markup=get_protection_menu_keyboard(user_id))
+        except Exception:
+            pass
         return
     if cmd == 'spam_status':
         settings = db.get_spam_settings(user_id)
-        status_text = f"""
-🛡️ حفاظت اسپم:
-🔒 وضعیت: {'فعال' if settings.get('spam_protection') else 'غیرفعال'}
-📊 محدودیت: {settings.get('spam_limit', 10)} پیام
-⏱️ زمان: {settings.get('mute_duration', 10)} ثانیه
-"""
-        await msg.edit_text(status_text)
+        status_text = (
+            f"🛡️ حفاظت اسپم:\n"
+            f"🔒 وضعیت: {'فعال' if settings.get('spam_protection') else 'غیرفعال'}\n"
+            f"📊 محدودیت: {settings.get('spam_limit', 10)} پیام\n"
+            f"⏱️ زمان: {settings.get('mute_duration', 10)} ثانیه"
+        )
+        try:
+            await safe_edit_panel(query, status_text, reply_markup=get_protection_menu_keyboard(user_id))
+        except Exception:
+            pass
         return
-    
     lock_commands = {
         'lock_link': 'لینک',
         'lock_photo': 'عکس',
@@ -8835,16 +8957,47 @@ async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             pass
         return
     
-    if cmd in ['info', 'download_profile', 'set_profile', 'set_bio', 
-               'delete_profile', 'delete_bio', 'change_name', 'change_bio', 
+    if cmd == 'search_on':
+        manager.search_mode = True
+        try:
+            await refresh_panel_keyboard(query, user_id, "🔎 گوگل", get_google_menu_keyboard)
+        except Exception:
+            try:
+                await query.edit_message_reply_markup(reply_markup=get_google_menu_keyboard(user_id))
+            except Exception:
+                pass
+        return
+    if cmd == 'search_off':
+        manager.search_mode = False
+        manager.last_search_results = []
+        try:
+            await refresh_panel_keyboard(query, user_id, "🔎 گوگل", get_google_menu_keyboard)
+        except Exception:
+            try:
+                await query.edit_message_reply_markup(reply_markup=get_google_menu_keyboard(user_id))
+            except Exception:
+                pass
+        return
+
+    # دستورات راهنمایی که فقط کپشن پنل را عوض می‌کنند (بدون پیام جدید)
+    if cmd in ['info', 'download_profile', 'set_profile', 'set_bio',
+               'delete_profile', 'delete_bio', 'change_name', 'change_bio',
                'change_profile', 'change_profile_alt', 'spam', 'reaction', 'reaction_off',
                'delete_all', 'delete_50', 'delete_10', 'action', 'action_off', 'action_list',
-               'dice_1', 'dice_2', 'dice_3', 'dice_4', 'dice_5', 'dice_6', 
-               'dart', 'basketball', 'football', 'search_on', 'search_off']:
-        await msg.edit_text(f"✅ دستور {cmd} اجرا شد")
+               'dice_1', 'dice_2', 'dice_3', 'dice_4', 'dice_5', 'dice_6',
+               'dart', 'basketball', 'football']:
+        # هیچ پیام جدیدی نفرست — فقط تیک کالبک
+        try:
+            await query.answer()
+        except Exception:
+            pass
         return
-    
-    await msg.edit_text(f"✅ دستور {cmd} اجرا شد")
+
+    # پیش‌فرض: هیچ پیام تأیید نفرست
+    try:
+        await query.answer()
+    except Exception:
+        pass
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message:
