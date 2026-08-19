@@ -183,6 +183,107 @@ if not os.path.exists(SESSIONS_FOLDER):
 
 GROUP_ID = -1002817019483
 
+
+# ========== ماژول ارزها (Swap API + Fragment Peg) ==========
+SWAP_API_URL = "https://swapwallet.app/api/v1/market/prices"
+SWAP_API_KEY = "apikey-h8T5ufE73fILlDudXnPJp6CRYV9PSMKviBB0SxCXCAOzSFneGcBHaUa19am2kTIU"
+_CRYPTO_CACHE = {"ts": 0.0, "data": None}
+
+async def fetch_crypto_prices():
+    import time as _t
+    now = _t.time()
+    if _CRYPTO_CACHE["data"] and now - _CRYPTO_CACHE["ts"] < 15:
+        return _CRYPTO_CACHE["data"]
+    try:
+        import aiohttp
+        headers = {"x-api-key": SWAP_API_KEY, "Accept": "application/json"}
+        timeout = aiohttp.ClientTimeout(total=8)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get(SWAP_API_URL, headers=headers) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    result = data.get("result") if isinstance(data, dict) and "result" in data else data
+                    _CRYPTO_CACHE["data"] = result
+                    _CRYPTO_CACHE["ts"] = now
+                    return result
+    except Exception as e:
+        logger.error(f"crypto prices: {e}")
+    return _CRYPTO_CACHE.get("data")
+
+def _fmt_price(value):
+    try:
+        v = float(str(value).replace(",", "").strip())
+        if v >= 1000:
+            return f"{v:,.0f}" if v == int(v) else f"{v:,.2f}"
+        if v >= 1:
+            return f"{v:,.3f}"
+        if v >= 0.0001:
+            return f"{v:.6f}"
+        return f"{v:.8f}"
+    except Exception:
+        return str(value)
+
+async def compile_crypto_rates_text():
+    prices = await fetch_crypto_prices()
+    if not prices:
+        return "❌ ارتباط با API معاملاتی برقرار نشد."
+    usdt_irt = float(prices.get("USDT/IRT", 0) or 0)
+    coins = ["BTC", "ETH", "TON", "SOL", "BNB", "XRP", "DOGE", "NOT", "PEPE", "ADA", "LINK", "AVAX"]
+    lines = ["💎 <b>بازار جهانی:</b>\n"]
+    for sym in coins:
+        usd = prices.get(f"{sym}/USDT", "0")
+        if usd and str(usd) != "0":
+            try:
+                uf = float(usd)
+                irt = uf * usdt_irt
+                lines.append(f"💵 <b>{sym}:</b>\n   ▫️ <code>${_fmt_price(uf)}</code>\n   ▫️ <code>{_fmt_price(irt)} تومان</code>")
+            except Exception:
+                pass
+    return "\n".join(lines)
+
+_PREMIUM_USD = {12: 28.99, 6: 15.99, 3: 11.99}
+_STARS_USD = {50: 0.75, 100: 1.50, 150: 2.25, 250: 3.75, 500: 7.50, 1000: 15.00, 2500: 37.50}
+
+async def compile_crypto_premium_text():
+    prices = await fetch_crypto_prices()
+    ton = float((prices or {}).get("TON/USDT", 0) or 0)
+    usdt_irt = float((prices or {}).get("USDT/IRT", 0) or 0)
+    if ton <= 0:
+        return "❌ نرخ TON در دسترس نیست."
+    lines = ["💎 <b>نرخ تلگرام پریمیوم (فرگمنت):</b>\n"]
+    for m in (12, 6, 3):
+        usd = _PREMIUM_USD[m]
+        ton_need = round(usd / ton, 2)
+        irt = usd * usdt_irt
+        disc = -52 if m == 12 else (-47 if m == 6 else -20)
+        lines.append(
+            f"💵 <b>اشتراک {m} ماهه ({disc}%):</b>\n"
+            f"  ▫️ فرگمنت: <code>{ton_need} TON</code>\n"
+            f"  ▫️ دلار: <code>${_fmt_price(usd)}</code>\n"
+            f"  ▫️ تومان: <code>{_fmt_price(irt)} تومان</code>"
+        )
+    return "\n\n".join(lines)
+
+async def compile_crypto_stars_text():
+    prices = await fetch_crypto_prices()
+    ton = float((prices or {}).get("TON/USDT", 0) or 0)
+    usdt_irt = float((prices or {}).get("USDT/IRT", 0) or 0)
+    if ton <= 0:
+        return "❌ نرخ TON در دسترس نیست."
+    lines = ["⭐ <b>نرخ استارز (Stars):</b>\n"]
+    for pack in (50, 100, 150, 250, 500, 1000, 2500):
+        usd = _STARS_USD[pack]
+        ton_need = round(usd / ton, 2)
+        irt = usd * usdt_irt
+        lines.append(
+            f"💵 <b>بسته {pack}:</b>\n"
+            f"  ▫️ فرگمنت: <code>{ton_need} TON</code>\n"
+            f"  ▫️ دلار: <code>${_fmt_price(usd)}</code>\n"
+            f"  ▫️ تومان: <code>{_fmt_price(irt)} تومان</code>"
+        )
+    return "\n\n".join(lines)
+
+
 MEDIA_FOLDER = 'media_storage'
 if not os.path.exists(MEDIA_FOLDER):
     os.makedirs(MEDIA_FOLDER)
@@ -5920,21 +6021,109 @@ def _load_panel_base_image():
 
 
 def clean_display_name(name: str) -> str:
-    """اسم خالص بدون ساعت/پرچم/کاراکترهای تایم — برای بنر پنل"""
+    """
+    اسم واقعی کاربر را برای بنر آماده می‌کند:
+    - فونت‌های فانتزی/ریاضی/پررنگ تلگرام → حروف معمولی خوانا (بدون خط‌خطی)
+    - ساعت و پرچم حذف می‌شود
+    - ایموجی‌های ساده در اسم حفظ می‌شوند اگر جا باشد
+    """
     if not name:
         return "User"
     import re
+    import unicodedata
+
     s = str(name).strip()
-    s = s.replace('『', ' ').replace('』', ' ')
-    # حذف پرچم‌های منطقه‌ای
+
+    # نرمال‌سازی پایه (fullwidth و ترکیب‌ها)
+    try:
+        s = unicodedata.normalize('NFKC', s)
+    except Exception:
+        pass
+
+    # تبدیل بازه‌های فونت ریاضی/فانتزی تلگرام به ASCII
+    # Mathematical Bold/Italic/Script/Fraktur/Double-struck/Sans-serif/...
+    def _map_fancy_char(ch: str) -> str:
+        o = ord(ch)
+        # Digits: Mathematical Bold/Double-struck/Sans/Monospace 0-9
+        digit_bases = [
+            0x1D7CE, 0x1D7D8, 0x1D7E2, 0x1D7EC, 0x1D7F6,  # math digits
+        ]
+        for base in digit_bases:
+            if base <= o <= base + 9:
+                return chr(ord('0') + (o - base))
+        # Fullwidth digits
+        if 0xFF10 <= o <= 0xFF19:
+            return chr(ord('0') + (o - 0xFF10))
+        # Latin mathematical styles (A-Z / a-z blocks)
+        # Bold A-Z 1D400-1D419, a-z 1D41A-1D433
+        ranges = [
+            (0x1D400, 0x1D419, 'A'), (0x1D41A, 0x1D433, 'a'),  # bold
+            (0x1D434, 0x1D44D, 'A'), (0x1D44E, 0x1D467, 'a'),  # italic
+            (0x1D468, 0x1D481, 'A'), (0x1D482, 0x1D49B, 'a'),  # bold italic
+            (0x1D4D0, 0x1D4E9, 'A'), (0x1D4EA, 0x1D503, 'a'),  # bold script
+            (0x1D56C, 0x1D585, 'A'), (0x1D586, 0x1D59F, 'a'),  # bold fraktur
+            (0x1D5A0, 0x1D5B9, 'A'), (0x1D5BA, 0x1D5D3, 'a'),  # sans
+            (0x1D5D4, 0x1D5ED, 'A'), (0x1D5EE, 0x1D607, 'a'),  # sans bold
+            (0x1D608, 0x1D621, 'A'), (0x1D622, 0x1D63B, 'a'),  # sans italic
+            (0x1D63C, 0x1D655, 'A'), (0x1D656, 0x1D66F, 'a'),  # sans bold italic
+            (0x1D670, 0x1D689, 'A'), (0x1D68A, 0x1D6A3, 'a'),  # monospace
+            (0x1D504, 0x1D51C, 'A'), (0x1D51E, 0x1D537, 'a'),  # fraktur (gaps)
+            (0x1D538, 0x1D550, 'A'), (0x1D552, 0x1D56B, 'a'),  # double-struck
+            (0x1D49C, 0x1D4B5, 'A'), (0x1D4B6, 0x1D4CF, 'a'),  # script
+        ]
+        for start, end, base_ch in ranges:
+            if start <= o <= end:
+                return chr(ord(base_ch) + (o - start))
+        # Fullwidth Latin
+        if 0xFF21 <= o <= 0xFF3A:
+            return chr(ord('A') + (o - 0xFF21))
+        if 0xFF41 <= o <= 0xFF5A:
+            return chr(ord('a') + (o - 0xFF41))
+        # Circled Latin
+        if 0x24B6 <= o <= 0x24CF:
+            return chr(ord('A') + (o - 0x24B6))
+        if 0x24D0 <= o <= 0x24E9:
+            return chr(ord('a') + (o - 0x24D0))
+        # Parenthesized
+        if 0x249C <= o <= 0x24B5:
+            return chr(ord('a') + (o - 0x249C))
+        return ch
+
+    s = ''.join(_map_fancy_char(c) for c in s)
+
+    # جداکننده‌های تزئینی رایج
+    for ch in ('『', '』', '【', '】', '「', '」', '‹', '›', '«', '»', '•', '·', '▪', '▫', '◆', '◇'):
+        s = s.replace(ch, ' ')
+
+    # پرچم منطقه‌ای
     s = re.sub(r'[\U0001F1E0-\U0001F1FF]+', ' ', s)
-    # حذف ساعت HH:MM (ارقام عادی)
-    s = re.sub(r'[|｜]?\s*\d{1,2}\s*[:：٫.]\s*\d{1,2}', ' ', s)
-    # حذف بلوک‌های ارقام یونیکد (فونت کلاسیک)
-    s = re.sub(r'[\U0001D7D8-\U0001D7FF\U0001F10B\U0001F10C\u2070-\u2099\u2460-\u2473\u24EA-\u24FF\u2776-\u2793\uFF10-\uFF19]{2,}', ' ', s)
+    # ساعت
+    s = re.sub(r'[|｜]?\s*[0-9۰-۹]{1,2}\s*[:：٫.]\s*[0-9۰-۹]{1,2}', ' ', s)
     for ch in ('_', '*', '`', '[', ']', '\n', '\r', '|', '｜', '@'):
         s = s.replace(ch, ' ')
+
+    # فقط کاراکترهای قابل نمایش: حروف/اعداد/فاصله/چند ایموجی رایج
+    out = []
+    for c in s:
+        cat = unicodedata.category(c)
+        if cat.startswith('L') or cat.startswith('N') or c.isspace():
+            out.append(c)
+        elif cat in ('So', 'Sk') and ord(c) > 0x1F000:
+            # ایموجی — حداکثر چند تا نگه دار
+            out.append(c)
+        # بقیه (کنترل، خط‌های عجیب) دور ریخته می‌شوند
+    s = ''.join(out)
     s = ' '.join(s.split())
+    # محدودیت ایموجی برای جلوگیری از شلوغی بنر
+    emoji_count = 0
+    filtered = []
+    for c in s:
+        if ord(c) > 0x1F000:
+            emoji_count += 1
+            if emoji_count > 3:
+                continue
+        filtered.append(c)
+    s = ''.join(filtered).strip()
     return s or "User"
 
 
@@ -5981,23 +6170,23 @@ def _composite_panel(username: str, avatar_path: str = None) -> str:
 
         # اسم خالص بدون تایم/پرچم — کوتاه و خوانا
         raw_name = clean_display_name(username or "User")
-        if len(raw_name) > 18:
+        if len(raw_name) > 28:
             parts = raw_name.split()
             if len(parts) >= 2:
-                safe_name = (parts[0][:10] + ' ' + parts[-1][:8]).strip()
+                safe_name = (parts[0][:14] + ' ' + parts[-1][:12]).strip()
             else:
-                safe_name = raw_name[:16] + '…'
+                safe_name = raw_name[:26] + '…'
         else:
             safe_name = raw_name
 
-        # بنر فلزی پایین — اسم ۲× بزرگ + هم‌تراز مرکز بنر
+        # بنر فلزی پایین — اسم خیلی بزرگ‌تر و پرکننده بنر
         plate_cx = int(W * 0.613)
-        plate_cy = int(H * 0.855)
-        plate_w = int(W * 0.68)
-        plate_h = int(H * 0.26)
+        plate_cy = int(H * 0.850)
+        plate_w = int(W * 0.72)
+        plate_h = int(H * 0.30)
 
-        max_text_w = int(plate_w * 0.98)
-        max_text_h = int(plate_h * 1.05)
+        max_text_w = int(plate_w * 0.99)
+        max_text_h = int(plate_h * 1.10)
 
         draw = ImageDraw.Draw(img, 'RGBA')
         font_candidates = [
@@ -6017,7 +6206,7 @@ def _composite_panel(username: str, avatar_path: str = None) -> str:
         font = None
         tw = th = 0
         chosen_fs = 40
-        for fs in range(360, 40, -2):
+        for fs in range(420, 48, -2):
             f = None
             for fpath in font_candidates:
                 try:
@@ -6082,7 +6271,7 @@ def _composite_panel(username: str, avatar_path: str = None) -> str:
         os.makedirs(MEDIA_FOLDER, exist_ok=True)
         out = os.path.join(
             MEDIA_FOLDER,
-            f"panel_{abs(hash(safe_name + str(avatar_path or '') + str(W) + 'v23')) % 10**9}.jpg"
+            f"panel_{abs(hash(safe_name + str(avatar_path or '') + str(W) + 'v25')) % 10**9}.jpg"
         )
         img.convert('RGB').save(out, 'JPEG', quality=95)
         return out
@@ -6257,7 +6446,8 @@ def get_main_panel_keyboard(user_id):
         ],
         [
             InlineKeyboardButton("📣 گزارش", callback_data=f"report_menu_{user_id}", style="primary"),
-            InlineKeyboardButton("🛠 ابزار", callback_data=f"tools_menu_{user_id}", style="primary")
+            InlineKeyboardButton("🛠 ابزار", callback_data=f"tools_menu_{user_id}", style="primary"),
+            InlineKeyboardButton("💰 ارزها", callback_data=f"crypto_menu_{user_id}", style="success")
         ],
         [
             InlineKeyboardButton("🗣 منشی هوشمند", callback_data=f"monshi_menu_{user_id}", style="success"),
@@ -7547,7 +7737,7 @@ async def _button_callback_impl(update: Update, context: ContextTypes.DEFAULT_TY
             "general": ("✿ دستورات عمومی\n\n• وضعیت\n• درباره\n• پینگ", get_general_menu_keyboard),
             "action": ("☥ اکشن‌ها\n\n• اکشن [نام]\n• اکشن خاموش\n• اکشن لیست\n\nلیست اکشن‌ها:\n• تایپ\n• ویس\n• ویدیو\n• عکس\n• فیلم\n• فایل\n• بازی\n• استیکر\n• موقعیت\n• تماس\n• صحبت\n• لغو", get_action_menu_keyboard),
             "games": ("⚕ بازی‌ها\n\n• تاس [1-6]\n• دارت\n• بسکتبال\n• فوتبال\n• بولینگ\n• تاس کازینو\n• سه رنگ\n• شانس [عدد]", get_games_menu_keyboard),
-            "translate": ("❍ ترجمه خودکار\n\n• انگلیسی روشن/خاموش\n• عربی روشن/خاموش\n• عبری روشن/خاموش\n• روسی روشن/خاموش\n• ترکی روشن/خاموش", get_translate_menu_keyboard),
+            "translate": ("🌐 ترجمه\n\n• زبان‌ها را روشن/خاموش کنید\n• ریپلای + ترجمه → فارسی\n• ریپلای + ترجمه به زبان روسی → روسی", get_translate_menu_keyboard),
             "google": ("𖢅 گوگل و اهنگ\n\n• سرچ [موضوع]\n• خروج جستجو\n• .اهنگ [نام آهنگ]", get_google_menu_keyboard),
             "info": ("֍ دستورات اطلاعاتی\n\n• اطلاعات (ریپلای)\n• دانلود پروفایل (ریپلای)\n• تاریخ ساخت اکانت\n• نشست‌های فعال\n• اطلاعات سیستم\n• قیمت ارز [نماد]\n• نرخ ارز\n• تشخیص متن (ریپلای عکس)", get_info_menu_keyboard),
             "profile": ("𖢨 مدیریت پروفایل\n\n• ست پروف (ریپلای)\n• ست بیو (ریپلای)\n• حذف ست پروف\n• حذف ست بیو", get_profile_menu_keyboard),
@@ -7564,7 +7754,8 @@ async def _button_callback_impl(update: Update, context: ContextTypes.DEFAULT_TY
             "tools": ("🛠 ابزارها\n\n• امار گپ\n• کد QR\n• تگ ادمین\n• پین\n• سلف روشن/خاموش\n• ساخت استیکر", get_tools_menu_keyboard),
             "monshi": ("🤖 **منشی هوشمند**\n\nمدیریت پاسخ‌های خودکار", get_monshi_menu_keyboard),
             "mention": ("🏷️ **تگ همه**\n\nتگ کردن همه اعضای گروه به صورت ۱۳ نفره", get_mention_menu_keyboard),
-            "fortune": ("🔮 **فال و طالع‌بینی**\n\nانتخاب کنید:", get_fortune_menu_keyboard)
+            "fortune": ("🔮 **فال و طالع‌بینی**\n\nانتخاب کنید:", get_fortune_menu_keyboard),
+            "crypto": ("💰 ارزها و فرگمنت\n\n• لیست شاخص‌ها\n• پریمیوم فرگمنت\n• استارز فرگمنت\n• راهنما", get_crypto_menu_keyboard),
         }
         if action in menu_keyboards and parts[1] == "menu":
             text, keyboard_func = menu_keyboards[action]
@@ -8261,12 +8452,19 @@ async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 › 🎳 بولینگ — تا ۶ بیاید.
 › 🎨 سه رنگ — بازی شانسی رنگ.
 › دستور متنی: `شانس [عدد]` و `تاس [عدد]`""",
-        'translate_help': """📖 راهنمای ترجمه خودکار
+        'translate_help': """📖 راهنمای ترجمه
 
-با روشن کردن هر زبان، پیام‌های خروجی شما به آن زبان ترجمه و ارسال می‌شوند.
-› 🇬🇧 انگلیسی | 🇸🇦 عربی | 🇮🇱 عبری | 🇷🇺 روسی | 🇹🇷 ترکی
+۱) ترجمه خودکار خروجی:
+با روشن کردن هر زبان، پیام‌های خروجی شما به آن زبان ترجمه می‌شوند.
 
-› روی دکمه بزنید تا روشن/خاموش شود (تیک ✓).""",
+۲) مترجم با ریپلای:
+روی پیام کاربر ریپلای کنید و بنویسید:
+• ترجمه → ترجمه به فارسی
+• ترجمه به زبان روسی → به روسی
+• ترجمه به زبان انگلیسی → به انگلیسی
+(همین الگو برای عربی، آلمانی، فرانسوی، ترکی و ...)
+
+› روی دکمه زبان بزنید تا روشن/خاموش شود (تیک ✓).""",
         'info_help': """📖 راهنمای اطلاعاتی
 
 › 📋 اطلاعات — اطلاعات کاربر با ریپلای.
@@ -8957,6 +9155,50 @@ async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             pass
         return
     
+    if cmd == 'crypto_rates':
+        text = await compile_crypto_rates_text()
+        try:
+            await safe_edit_panel(query, text, reply_markup=get_crypto_menu_keyboard(user_id))
+        except Exception:
+            try:
+                await context.bot.send_message(chat_id=chat_id, text=text, parse_mode='HTML')
+            except Exception:
+                pass
+        return
+    if cmd == 'crypto_premium':
+        text = await compile_crypto_premium_text()
+        try:
+            await safe_edit_panel(query, text, reply_markup=get_crypto_menu_keyboard(user_id))
+        except Exception:
+            try:
+                await context.bot.send_message(chat_id=chat_id, text=text, parse_mode='HTML')
+            except Exception:
+                pass
+        return
+    if cmd == 'crypto_stars':
+        text = await compile_crypto_stars_text()
+        try:
+            await safe_edit_panel(query, text, reply_markup=get_crypto_menu_keyboard(user_id))
+        except Exception:
+            try:
+                await context.bot.send_message(chat_id=chat_id, text=text, parse_mode='HTML')
+            except Exception:
+                pass
+        return
+    if cmd == 'crypto_help':
+        help_txt = (
+            "📖 راهنمای ارزها\n\n"
+            "• لیست شاخص‌ها — قیمت لحظه‌ای کوین‌ها به دلار و تومان\n"
+            "• پریمیوم فرگمنت — قیمت اشتراک تلگرام پریمیوم\n"
+            "• استارز فرگمنت — قیمت بسته‌های ستاره\n\n"
+            "در سلف می‌توانید بنویسید: نرخ ارز | قیمت ارز BTC | پریمیوم | استارز"
+        )
+        try:
+            await safe_edit_panel(query, help_txt, reply_markup=get_crypto_menu_keyboard(user_id))
+        except Exception:
+            pass
+        return
+
     if cmd == 'search_on':
         manager.search_mode = True
         try:
