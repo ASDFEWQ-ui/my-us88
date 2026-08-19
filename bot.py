@@ -1540,7 +1540,7 @@ class MainDatabase:
     def get_answers(self, user_id):
         conn = sqlite3.connect(self.db_name)
         cursor = conn.cursor()
-        cursor.execute('SELECT question, answer FROM bot_answers WHERE user_id = ?', (user_id,))
+        cursor.execute('SELECT question, answer FROM bot_answers WHERE user_id = ? OR user_id = ?', (str(user_id), user_id))
         results = cursor.fetchall()
         conn.close()
         return {q: a for q, a in results}
@@ -2605,15 +2605,23 @@ class SelfBotManager:
             await event.edit(f"✅ پاسخ '{question}' حذف شد")
             return
         
-        if cmd == 'لیست' and args and args[0] == 'پاسخ':
+        if cmd == 'لیست' and args and args[0] in ('پاسخ', 'پاسخ‌ها', 'پاسخها'):
             answers = db.get_answers(self.user_id)
+            if not answers:
+                answers = db.get_answers(str(self.user_id))
             if answers:
                 text = "📋 لیست پاسخ‌ها:\n\n"
                 for i, (q, a) in enumerate(answers.items(), 1):
                     text += f"{i}. ❓ {q}\n   💬 {a}\n\n"
-                await event.edit(text)
+                try:
+                    await event.edit(text[:3500])
+                except Exception:
+                    await event.respond(text[:3500])
             else:
-                await event.edit("❌ هیچ پاسخی ذخیره نشده")
+                try:
+                    await event.edit("❌ هیچ پاسخی ذخیره نشده")
+                except Exception:
+                    await event.respond("❌ هیچ پاسخی ذخیره نشده")
             return
         
         if cmd == 'پاک' and args and args[0] == 'کردن' and len(args) > 1 and args[1] == 'پاسخ‌ها':
@@ -5868,14 +5876,14 @@ def _composite_panel(username: str, avatar_path: str = None) -> str:
         else:
             safe_name = raw_name
 
-        # بنر فلزی پایین — اسم حدود ۲ برابر بزرگ‌تر (پر کردن کل بنر)
+        # بنر فلزی پایین — اسم ۲× بزرگ + هم‌تراز مرکز بنر
         plate_cx = int(W * 0.613)
-        plate_cy = int(H * 0.848)
-        plate_w = int(W * 0.58)
-        plate_h = int(H * 0.175)
+        plate_cy = int(H * 0.855)
+        plate_w = int(W * 0.68)
+        plate_h = int(H * 0.26)
 
-        max_text_w = int(plate_w * 0.99)
-        max_text_h = int(plate_h * 1.15)
+        max_text_w = int(plate_w * 0.98)
+        max_text_h = int(plate_h * 1.05)
 
         draw = ImageDraw.Draw(img, 'RGBA')
         font_candidates = [
@@ -5895,7 +5903,7 @@ def _composite_panel(username: str, avatar_path: str = None) -> str:
         font = None
         tw = th = 0
         chosen_fs = 40
-        for fs in range(280, 36, -2):
+        for fs in range(360, 40, -2):
             f = None
             for fpath in font_candidates:
                 try:
@@ -5944,23 +5952,23 @@ def _composite_panel(username: str, avatar_path: str = None) -> str:
         )
         cropped = layer.crop(crop_box)
         cw, ch = cropped.size
-        # پر کردن تقریباً کامل بنر (حدود ۲× بزرگ‌تر از قبل)
+        # پر کردن کامل عرض/ارتفاع بنر و مرکز دقیق
         scale = min(max_text_w / max(cw, 1), max_text_h / max(ch, 1))
-        scale = max(scale * 1.05, scale)
-        new_w = max(1, min(int(cw * scale), max_text_w, W - 20))
-        new_h = max(1, min(int(ch * scale), max_text_h, H - 20))
+        scale = max(1.0, scale)  # حداقل ۱× لایه؛ معمولاً بزرگ‌تر می‌شود تا بنر پر شود
+        new_w = max(1, min(int(cw * scale), max_text_w, W - 4))
+        new_h = max(1, min(int(ch * scale), max_text_h, H - 4))
         try:
             cropped = cropped.resize((new_w, new_h), Image.Resampling.LANCZOS)
         except Exception:
             cropped = cropped.resize((new_w, new_h), Image.LANCZOS)
         paste_x = max(0, min(plate_cx - new_w // 2, W - new_w))
-        paste_y = max(0, min(plate_cy - new_h // 2, H - new_h))
+        paste_y = max(0, min(plate_cy - new_h // 2 - 2, H - new_h))  # کمی بالاتر برای وسط بنر
         img.paste(cropped, (paste_x, paste_y), cropped)
 
         os.makedirs(MEDIA_FOLDER, exist_ok=True)
         out = os.path.join(
             MEDIA_FOLDER,
-            f"panel_{abs(hash(safe_name + str(avatar_path or '') + str(W) + 'v21')) % 10**9}.jpg"
+            f"panel_{abs(hash(safe_name + str(avatar_path or '') + str(W) + 'v23')) % 10**9}.jpg"
         )
         img.convert('RGB').save(out, 'JPEG', quality=95)
         return out
@@ -7037,14 +7045,28 @@ async def _button_callback_impl(update: Update, context: ContextTypes.DEFAULT_TY
     data = query.data
     user_id = query.from_user.id
     user_id_str = str(user_id)
-    if '_' in data and not data.startswith(('admin_', 'approve_', 'reject_', 'stop_selfbot_', 'restart_selfbot_', 'desc_', 'menu_', 'code_')):
+    # um_ : owner = آخرین عدد — target = یکی مانده به آخر (اینجا فقط owner چک می‌شود)
+    if data.startswith('um_'):
         parts = data.split('_')
-        for part in parts:
+        owner_part = None
+        for part in reversed(parts):
             if part.isdigit() and len(part) >= 5:
-                if part != user_id_str:
-                    await query.answer("⛔ این پنل مال شما نیست", show_alert=True)
-                    return
+                owner_part = part
                 break
+        if owner_part and owner_part != user_id_str and int(user_id) != int(ADMIN_ID):
+            await query.answer("⛔ فقط کسی که پنل کاربر را باز کرده می‌تواند دکمه‌ها را کنترل کند", show_alert=True)
+            return
+    elif '_' in data and not data.startswith(('admin_', 'approve_', 'reject_', 'stop_selfbot_', 'restart_selfbot_', 'desc_', 'menu_', 'code_', 'um_')):
+        parts = data.split('_')
+        # فقط آخرین عدد بلند = owner پنل (نه target)
+        owner_part = None
+        for part in reversed(parts):
+            if part.isdigit() and len(part) >= 5:
+                owner_part = part
+                break
+        if owner_part and owner_part != user_id_str and int(user_id) != int(ADMIN_ID):
+            await query.answer("⛔ این پنل مال شما نیست", show_alert=True)
+            return
     if data.startswith("close_panel_"):
         await query.answer("❌ بستن پنل")
         try:
@@ -7229,7 +7251,15 @@ async def _button_callback_impl(update: Update, context: ContextTypes.DEFAULT_TY
             action = '_'.join(parts[1:-2])  # lock_sticker / enemy_pv / menu_action / act_تایپ / heart ...
             panel_lock_targets[owner_id] = target_id
             panel_lock_targets[str(owner_id)] = target_id
-            await query.answer()
+            # answer بعداً برای اکشن/انیمیشن؛ برای بقیه همین‌جا
+            _need_later_answer = action.startswith('act_') or action == 'actoff' or action in (
+                'heart', 'moon', 'advheart', 'love', 'santet', 'hack'
+            )
+            if not _need_later_answer:
+                try:
+                    await query.answer()
+                except Exception:
+                    pass
 
             # --- زیر‌منوها ---
             if action == 'menu_main':
@@ -7575,17 +7605,35 @@ async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             text = "📋 لیست پاسخ‌ها:\n\n"
             for i, (q, a) in enumerate(answers.items(), 1):
                 text += f"{i}. ❓ {q}\n   💬 {a}\n\n"
-            await msg.edit_text(text)
+            if len(text) > 3500:
+                text = text[:3500] + "\n..."
         else:
-            await msg.edit_text("❌ هیچ پاسخی ذخیره نشده")
+            text = "❌ هیچ پاسخی ذخیره نشده"
+        try:
+            await safe_edit_panel(query, text, reply_markup=get_monshi_menu_keyboard(user_id))
+        except Exception:
+            try:
+                await context.bot.send_message(chat_id=user_id, text=text)
+            except Exception:
+                pass
         return
     if cmd == 'clear_answers':
-        conn = sqlite3.connect('main_database.db')
-        cursor = conn.cursor()
-        cursor.execute('DELETE FROM bot_answers WHERE user_id = ?', (user_id,))
-        conn.commit()
-        conn.close()
-        await msg.edit_text("✅ همه پاسخ‌ها پاک شدند")
+        try:
+            conn = sqlite3.connect('main_database.db')
+            cursor = conn.cursor()
+            cursor.execute('DELETE FROM bot_answers WHERE user_id = ?', (str(user_id),))
+            cursor.execute('DELETE FROM bot_answers WHERE user_id = ?', (user_id,))
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            logger.error(f'clear_answers: {e}')
+        try:
+            await safe_edit_panel(query, "✅ همه پاسخ‌ها پاک شدند", reply_markup=get_monshi_menu_keyboard(user_id))
+        except Exception:
+            try:
+                await msg.edit_text("✅ همه پاسخ‌ها پاک شدند")
+            except Exception:
+                pass
         return
     
     if cmd == 'mention_all':
