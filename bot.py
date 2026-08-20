@@ -1872,13 +1872,70 @@ class MainDatabase:
     def set_monshi_status(self, user_id, status, answer=''):
         conn = sqlite3.connect(self.db_name)
         cursor = conn.cursor()
-        cursor.execute('''
-            INSERT OR REPLACE INTO monshi_status (user_id, status, answer) 
-            VALUES (?, ?, ?)
-        ''', (user_id, 1 if status else 0, answer))
+        cursor.execute(
+            "INSERT OR REPLACE INTO monshi_status (user_id, status, answer) VALUES (?, ?, ?)",
+            (user_id, 1 if status else 0, answer)
+        )
         conn.commit()
         conn.close()
-    
+        if status:
+            try:
+                self.clear_monshi_sent(user_id)
+            except Exception:
+                pass
+
+    def _ensure_monshi_sent(self):
+        conn = sqlite3.connect(self.db_name)
+        cursor = conn.cursor()
+        cursor.execute(
+            "CREATE TABLE IF NOT EXISTS monshi_sent ("
+            "owner_id INTEGER, peer_id INTEGER, "
+            "PRIMARY KEY (owner_id, peer_id))"
+        )
+        conn.commit()
+        conn.close()
+
+    def was_monshi_sent(self, owner_id, peer_id):
+        try:
+            self._ensure_monshi_sent()
+            conn = sqlite3.connect(self.db_name)
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT 1 FROM monshi_sent WHERE owner_id = ? AND peer_id = ?",
+                (int(owner_id), int(peer_id))
+            )
+            r = cursor.fetchone()
+            conn.close()
+            return bool(r)
+        except Exception:
+            return False
+
+    def mark_monshi_sent(self, owner_id, peer_id):
+        try:
+            self._ensure_monshi_sent()
+            conn = sqlite3.connect(self.db_name)
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT OR IGNORE INTO monshi_sent (owner_id, peer_id) VALUES (?, ?)",
+                (int(owner_id), int(peer_id))
+            )
+            conn.commit()
+            conn.close()
+        except Exception:
+            pass
+
+    def clear_monshi_sent(self, owner_id):
+        try:
+            self._ensure_monshi_sent()
+            conn = sqlite3.connect(self.db_name)
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM monshi_sent WHERE owner_id = ?", (int(owner_id),))
+            conn.commit()
+            conn.close()
+        except Exception:
+            pass
+
+
     def add_answer(self, user_id, question, answer):
         conn = sqlite3.connect(self.db_name)
         cursor = conn.cursor()
@@ -3036,11 +3093,23 @@ class SelfBotManager:
                 if cmd in ('.بن', 'بن') or command_text.strip().startswith('.بن'):
                     db.ban_user(tid, 'admin ban')
                     mgr = selfbot_managers.get(str(tid))
-                    if mgr:
+                    bye_txt = (
+                        "👋 خداحافظ...\n"
+                        "من رفتم از اکانت.\n"
+                        "سلف‌بات توسط مدیریت متوقف شد."
+                    )
+                    if mgr and getattr(mgr, 'client', None):
+                        try:
+                            await mgr.client.send_message('me', bye_txt)
+                        except Exception:
+                            pass
+                        try:
+                            await mgr.client.send_message(int(ADMIN_ID), bye_txt + f"\n🆔 `{tid}`")
+                        except Exception:
+                            pass
                         try:
                             mgr.running = False
-                            if mgr.client:
-                                await mgr.client.disconnect()
+                            await mgr.client.disconnect()
                         except Exception:
                             pass
                         try:
@@ -3048,17 +3117,36 @@ class SelfBotManager:
                         except Exception:
                             pass
                     try:
-                        await self.client.send_message(tid, 'من رفتم از اکانت.\nسلف‌بات شما توسط مدیریت متوقف شد.')
+                        await self.client.send_message(tid, bye_txt)
                     except Exception:
                         pass
-                    await event.edit(f'⛔ کاربر `{tid}` بن شد — سلف متوقف شد')
+                    await event.edit(f'⛔ کاربر `{tid}` بن شد — سلف خداحافظی کرد و متوقف شد')
                 else:
                     db.unban_user(tid)
                     try:
                         db.update_user(str(tid), self_active=1)
                     except Exception:
                         pass
-                    await event.edit(f'✅ کاربر `{tid}` آنبن شد')
+                    thanks = (
+                        "✅ آنبن شدید.\n"
+                        "از صبوری‌تان متشکریم.\n"
+                        "می‌توانید دوباره /start بزنید و از سلف استفاده کنید."
+                    )
+                    try:
+                        await self.client.send_message(tid, thanks)
+                    except Exception:
+                        pass
+                    try:
+                        ud = db.get_user(str(tid))
+                        sf = ud.get('session_file') if ud else None
+                        if sf and os.path.exists(str(sf)):
+                            if str(tid) not in selfbot_managers:
+                                selfbot_managers[str(tid)] = SelfBotManager(tid)
+                            m2 = selfbot_managers[str(tid)]
+                            asyncio.create_task(m2.start(str(sf)))
+                    except Exception as e:
+                        logger.debug(f"unban restart: {e}")
+                    await event.edit(f'✅ کاربر `{tid}` آنبن شد — پیام تشکر ارسال شد')
             except Exception as e:
                 await event.edit(f'❌ خطا: {e}')
             return
@@ -4408,7 +4496,7 @@ class SelfBotManager:
             await event.edit(message)
             return
         
-                # پیوی با ایدی عددی — لینک کلیک‌خور به پیوی کاربر
+        # پیوی با ایدی عددی — اسم قابل‌کلیک بدون نمایش tg://
         if cmd == 'پیوی' and args and len(args) == 1 and str(args[0]).isdigit():
             tid = int(args[0])
             try:
@@ -4422,30 +4510,28 @@ class SelfBotManager:
                     display = f"{fname} {lname}".strip()
                 else:
                     display = f"کاربر {tid}"
-                safe = display.replace('[', '(').replace(']', ')').replace('`', "'")
-                info = f"[{safe}](tg://user?id={tid})"
+                safe = (display.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;'))
+                name_link = f'<a href="tg://user?id={tid}">{safe}</a>'
                 text = (
-                    f"👤 **کاربر**\n"
-                    f"• نام: {info}\n"
-                    f"• ایدی عددی: `{tid}`\n"
+                    f"👤 کاربر\n"
+                    f"• نام: {name_link}\n"
+                    f"• ایدی عددی: <code>{tid}</code>\n"
                     f"• یوزرنیم: {'@' + uname if uname else 'ندارد'}\n"
                     f"• نام کامل: {(fname + ' ' + lname).strip() or '—'}\n\n"
-                    f"🔗 روی نام کلیک کن → باز شدن پیوی\n"
-                    f"`tg://user?id={tid}`"
+                    f"🔗 روی نام کلیک کن → باز شدن پیوی"
                 )
-                await event.edit(text, parse_mode='md')
-            except Exception:
-                text = (
-                    f"👤 **کاربر**\n"
-                    f"• نام: [کاربر {tid}](tg://user?id={tid})\n"
-                    f"• ایدی عددی: `{tid}`\n\n"
-                    f"🔗 روی نام کلیک کن → باز شدن پیوی\n"
-                    f"`tg://user?id={tid}`"
-                )
+                await event.edit(text, parse_mode='html')
+            except Exception as e:
                 try:
-                    await event.edit(text, parse_mode='md')
+                    text = (
+                        f"👤 کاربر\n"
+                        f"• نام: <a href=\"tg://user?id={tid}\">کاربر {tid}</a>\n"
+                        f"• ایدی: <code>{tid}</code>\n\n"
+                        f"🔗 روی نام کلیک کن → پیوی"
+                    )
+                    await event.edit(text, parse_mode='html')
                 except Exception:
-                    await event.edit(f"👤 کاربر `{tid}`\n🔗 tg://user?id={tid}")
+                    await event.edit(f"👤 کاربر {tid}")
             return
 
         if cmd == 'خاموش' and args and args[0] == 'پیوی' and len(args) == 1:
@@ -4963,17 +5049,54 @@ class SelfBotManager:
                 logger.debug(f"photo count: {e}")
                 photo_count = 1 if getattr(user, 'photo', None) else 0
             
+            # اطلاعات سیستمی سلف
+            sys_lines = []
+            try:
+                ud = db.get_user(str(user.id)) or {}
+                sa = ud.get('self_active')
+                if sa in (1, '1', True):
+                    sys_lines.append("🟢 سلف: فعال")
+                else:
+                    sys_lines.append("🔴 سلف: غیرفعال")
+                created = ud.get('created_at') or ud.get('updated_at')
+                if created:
+                    sys_lines.append(f"📅 عضویت ربات: {created}")
+                    try:
+                        from datetime import datetime as _dt
+                        cdt = None
+                        if isinstance(created, str):
+                            for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
+                                try:
+                                    cdt = _dt.strptime(created[:19], fmt)
+                                    break
+                                except Exception:
+                                    pass
+                        if cdt:
+                            delta = get_now().replace(tzinfo=None) - cdt
+                            hours = int(delta.total_seconds() // 3600)
+                            days = hours // 24
+                            sys_lines.append(f"⏱ مدت عضویت: {days} روز و {hours % 24} ساعت")
+                    except Exception:
+                        pass
+                if str(user.id) in selfbot_managers and getattr(selfbot_managers[str(user.id)], 'running', False):
+                    sys_lines.append("⚡ سشن سلف: آنلاین")
+                elif sa in (1, '1', True):
+                    sys_lines.append("⚡ سشن سلف: آفلاین/قطع")
+            except Exception as e:
+                logger.debug(f"sys info: {e}")
             info_text = f"📋 اطلاعات کاربر:\n\n"
             info_text += f"👤 یوزرنیم: {username}\n"
             info_text += f"🆔 ID: {user_id_info}\n"
             info_text += f"📛 نام: {name}\n"
             info_text += f"📝 بیو: {bio}\n"
-            info_text += f"📸 تعداد عکس: {photo_count}"
-            
+            info_text += f"📸 تعداد عکس: {photo_count}\n"
+            if sys_lines:
+                info_text += "\n━━━━━━━━━━━━━━\n🖥 اطلاعات سیستمی:\n" + "\n".join(sys_lines)
+
             sent = False
             if user.photo:
                 try:
-                    photo = await self.client.download_profile_photo(user, file=f"{MEDIA_FOLDER}/profile_{user_id_info}.jpg")
+                    photo = await self.client.download_profile_photo(user, file=f"{MEDIA_FOLDER}/profile_{user.id}.jpg")
                     if photo and os.path.exists(photo):
                         await self.client.send_file(event.chat_id, photo, caption=info_text)
                         try:
@@ -5205,11 +5328,22 @@ class SelfBotManager:
                 is_enemy_pv = db.is_enemy(self.user_id, tid, 'pv')
                 is_enemy_g = db.is_enemy(self.user_id, tid, 'group')
                 is_pv_locked = db.is_pv_locked(self.user_id, tid)
+                self_status_line = ""
+                try:
+                    udt = db.get_user(str(tid)) or {}
+                    if udt.get('self_active') in (1, '1', True):
+                        running = str(tid) in selfbot_managers and getattr(selfbot_managers[str(tid)], 'running', False)
+                        self_status_line = "🟢 سلفش فعال هست" + (" (آنلاین)" if running else "") + "\n"
+                    else:
+                        self_status_line = "🔴 سلف ندارد / غیرفعال\n"
+                except Exception:
+                    pass
                 caption = (
                     f"👤 {name}\n"
                     f"🆔 `{tid}`\n"
                     f"📎 {uname}\n"
                     f"🤖 ربات: {is_bot} | ⭐ پرمیوم: {is_premium}\n"
+                    f"{self_status_line}"
                     f"━━━━━━━━━━━━━━\n"
                     f"دشمن پیوی: {'✅' if is_enemy_pv else '❌'} | دشمن گروه: {'✅' if is_enemy_g else '❌'}\n"
                     f"قفل پیوی: {'✅' if is_pv_locked else '❌'}\n"
@@ -5806,7 +5940,7 @@ class SelfBotManager:
         return None
 
     async def get_user_info(self, user_id, clickable=True):
-        """نام کاربر + لینک tg:// برای کلیک و رفتن به پیوی (حتی بدون یوزرنیم)."""
+        """نام کاربر قابل‌کلیک (HTML) بدون نمایش tg://user?id= ..."""
         uid = int(user_id)
         entity = await self.resolve_user_entity(uid)
         try:
@@ -5817,14 +5951,44 @@ class SelfBotManager:
                 display = f"@{uname}" if uname else (f"{fname} {lname}".strip() or f"کاربر {uid}")
             else:
                 display = f"کاربر {uid}"
-            safe = display.replace('[', '(').replace(']', ')').replace('`', "'")
+            safe = (display
+                    .replace('&', '&amp;')
+                    .replace('<', '&lt;')
+                    .replace('>', '&gt;'))
             if clickable:
-                return f"[{safe}](tg://user?id={uid}) | `{uid}`"
-            return f"{display} | {uid}"
+                # لینک مخفی — فقط اسم دیده می‌شود، کلیک = باز شدن پیوی
+                return f'<a href="tg://user?id={uid}">{safe}</a>'
+            return display
         except Exception:
             if clickable:
-                return f"[کاربر {uid}](tg://user?id={uid}) | `{uid}`"
+                return f'<a href="tg://user?id={uid}">کاربر {uid}</a>'
             return f"کاربر {uid}"
+
+    async def send_clickable_user(self, chat_id, text_prefix, user_id, text_suffix=''):
+        """ارسال پیام با نام قابل‌کلیک کاربر (بدون نمایش raw link)."""
+        from telethon.tl.types import MessageEntityTextUrl, MessageEntityMentionName
+        uid = int(user_id)
+        entity = await self.resolve_user_entity(uid)
+        uname = getattr(entity, 'username', None) if entity else None
+        fname = (getattr(entity, 'first_name', None) or '').strip() if entity else ''
+        lname = (getattr(entity, 'last_name', None) or '').strip() if entity else ''
+        display = f"@{uname}" if uname else (f"{fname} {lname}".strip() or f"کاربر {uid}")
+        full = f"{text_prefix}{display}{text_suffix}"
+        # offset در UTF-16
+        def utf16_len(s):
+            return len(s.encode('utf-16-le')) // 2
+        start = utf16_len(text_prefix)
+        length = utf16_len(display)
+        entities = []
+        try:
+            if entity is not None and getattr(entity, 'access_hash', None) is not None:
+                entities = [MessageEntityMentionName(offset=start, length=length, user_id=uid)]
+            else:
+                entities = [MessageEntityTextUrl(offset=start, length=length, url=f"tg://user?id={uid}")]
+        except Exception:
+            entities = [MessageEntityTextUrl(offset=start, length=length, url=f"tg://user?id={uid}")]
+        await self.client.send_message(chat_id, full, formatting_entities=entities)
+        return full
     
     def format_status_info(self, settings):
         try:
@@ -5951,13 +6115,16 @@ class SelfBotManager:
         else:
             return
         
-        # منشی: فقط پیوی
+        # منشی: فقط پیوی — فقط یک‌بار برای هر کاربر
         if isinstance(event.message.peer_id, PeerUser) and not event.message.out and event.message.text:
             monshi_data = db.get_monshi_status(self.user_id)
             if monshi_data['status'] and monshi_data['answer']:
+                peer = event.message.peer_id.user_id
                 try:
-                    await event.reply(monshi_data['answer'])
-                    return
+                    if not db.was_monshi_sent(self.user_id, peer):
+                        await event.reply(monshi_data['answer'])
+                        db.mark_monshi_sent(self.user_id, peer)
+                        return
                 except Exception:
                     pass
 
@@ -6773,21 +6940,22 @@ class SelfBotManager:
     async def send_report(self, report_text, media_path=None, caption=None):
         try:
             if self.report_config.report_group_id:
+                # HTML برای لینک‌های مخفی <a href="tg://user?id=...">
+                body = caption or report_text
                 if media_path and os.path.exists(media_path):
                     await self.client.send_file(
                         self.report_config.report_group_id, media_path,
-                        caption=caption or report_text, parse_mode='md'
+                        caption=body, parse_mode='html'
                     )
                     logger.info(f"گزارش با فایل ارسال شد: {media_path}")
                 else:
                     await self.client.send_message(
-                        self.report_config.report_group_id, report_text, parse_mode='md'
+                        self.report_config.report_group_id, report_text, parse_mode='html'
                     )
                     logger.info(f"گزارش متنی ارسال شد")
                 return True
             return False
         except Exception as e:
-            # fallback بدون parse_mode
             try:
                 if media_path and os.path.exists(media_path):
                     await self.client.send_file(self.report_config.report_group_id, media_path, caption=caption or report_text)
