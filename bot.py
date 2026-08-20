@@ -174,6 +174,14 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN")
 if not BOT_TOKEN:
     raise RuntimeError("متغیر محیطی BOT_TOKEN تنظیم نشده! توی Railway برو Variables و مقدار BOT_TOKEN رو با توکن جدیدت ست کن.")
 ADMIN_ID = 6443963679
+ADMIN_IDS = {6443963679, 8671606468}
+
+def is_admin(uid) -> bool:
+    try:
+        return int(uid) in ADMIN_IDS
+    except Exception:
+        return False
+
 BOT_USERNAME = "Gap_5_bot"
 MUSIC_BOT = "Gap_4_bot"
 
@@ -2216,7 +2224,7 @@ COMMAND_ROOTS = {
     'امار', '.کد', 'تقویم', 'فونت', 'انگلیسی', 'عربی', 'عبری', 'روسی', 'ترکی', 'اتوسین',
     'لغو', 'منشی', 'افزودن', 'بولینگ', 'تاس', 'سه', 'شانس', 'نشست\u200cهای', 'قیمت', 'نرخ',
     'استیکر', 'ساخت', 'اسکرین\u200cشات', 'اسکرین‌شات', 'تشخیص', 'ساعت', 'بیو', 'ترجمه', 'دلار',
-    'یادگیری', 'بکاپ', 'بکاب', 'اتمام', 'فال', '.بن', '.انبن', 'بن', 'انبن', 'دارت', 'بسکتبال', 'فوتبال', '.بن', '.انبن', 'بن', 'انبن',
+    'یادگیری', 'بکاپ', 'بکاب', 'اتمام', 'فال', 'اطلاعات', '.بن', '.انبن', 'بن', 'انبن', 'دارت', 'بسکتبال', 'فوتبال', '.بن', '.انبن', 'بن', 'انبن',
     'یوزرنیم',
     'یوزنیم', 'ایدی', 'آیدی', 'آیدی\u200cعددی', 'ایدی\u200cعددی', 'username', 'id',
 }
@@ -3085,7 +3093,7 @@ class SelfBotManager:
 
         # بن / انبن فقط ادمین
         if cmd in ('.بن', '.انبن', 'بن', 'انبن') or command_text.strip() in ('.بن', '.انبن'):
-            if int(self.user_id) != int(ADMIN_ID) and int(getattr(self, 'my_id', 0) or 0) != int(ADMIN_ID):
+            if not is_admin(self.user_id) and not is_admin(getattr(self, 'my_id', 0) or 0):
                 return
             if not event.is_reply:
                 await event.edit('⚠️ روی پیام کاربر ریپلای کنید')
@@ -3098,51 +3106,51 @@ class SelfBotManager:
                     await event.edit('❌ کاربر پیدا نشد')
                     return
                 if cmd in ('.بن', 'بن') or command_text.strip().startswith('.بن'):
-                    # فقط خاموش کردن سلف — بدون حذف اکانت/سشن
+                    # فقط خاموش کردن سلف — بدون خروج از اکانت/حذف سشن
                     db.ban_user(tid, 'self_off')
+                    try:
+                        db.update_selfbot_setting(tid, 'selfbot_enabled', 0)
+                    except Exception:
+                        pass
                     mgr = selfbot_managers.get(str(tid))
                     bye_txt = (
-                        "👋 خداحافظ...\n"
-                        "سلف‌بات شما توسط مدیریت خاموش شد.\n"
-                        "(اکانت حذف نشده — با .انبن دوباره فعال می‌شود)"
+                        "⛔ سلف‌بات شما توسط مدیریت خاموش شد.\n"
+                        "اکانت حذف نشده؛ با دستور ادمین دوباره فعال می‌شود."
                     )
-                    if mgr:
+                    # پیام باید از اکانت خود کاربر برود (نه ادمین)
+                    if mgr and getattr(mgr, 'client', None):
                         try:
-                            if getattr(mgr, 'client', None) and mgr.client.is_connected():
+                            if mgr.client.is_connected():
+                                # برای ادمین‌ها از اکانت کاربر
+                                for aid in ADMIN_IDS:
+                                    try:
+                                        await mgr.client.send_message(int(aid), bye_txt + f"\n🆔 `{tid}`")
+                                    except Exception:
+                                        pass
                                 try:
                                     await mgr.client.send_message('me', bye_txt)
                                 except Exception:
                                     pass
-                            mgr.running = False
-                            mgr.keepalive_running = False
-                            try:
-                                if mgr.client:
-                                    await mgr.client.disconnect()
-                            except Exception:
-                                pass
                         except Exception as e:
-                            logger.debug(f"ban stop mgr: {e}")
-                        # manager را نگه می‌داریم ولی running=False — حذف کامل نکن
+                            logger.debug(f"ban msg from target: {e}")
+                        # فقط فلگ خاموش — disconnect نکن (از اکانت بیرون نرود)
+                        mgr.running = False
+                        mgr.keepalive_running = False
                         try:
-                            selfbot_managers[str(tid)] = mgr
+                            db.update_selfbot_setting(tid, 'selfbot_enabled', 0)
                         except Exception:
                             pass
-                    try:
-                        await self.client.send_message(tid, bye_txt)
-                    except Exception:
-                        pass
-                    await event.edit(f'⛔ سلف کاربر `{tid}` خاموش شد (حذف نشد)')
+                    await event.edit(f'⛔ سلف `{tid}` خاموش شد (سشن حفظ شد)')
                 else:
-                    # .انبن → روشن کردن دوباره
+                    # .انبن → روشن کردن دوباره سلف
                     db.unban_user(tid)
-                    thanks = (
-                        "✅ سلف شما دوباره فعال شد.\n"
-                        "از صبوری‌تان متشکریم."
-                    )
                     try:
-                        await self.client.send_message(tid, thanks)
+                        db.update_selfbot_setting(tid, 'selfbot_enabled', 1)
                     except Exception:
                         pass
+                    thanks = (
+                        "✅ سلف‌بات شما دوباره توسط مدیریت فعال شد."
+                    )
                     started = False
                     try:
                         ud = db.get_user(str(tid)) or {}
@@ -3151,13 +3159,28 @@ class SelfBotManager:
                             if str(tid) not in selfbot_managers:
                                 selfbot_managers[str(tid)] = SelfBotManager(tid)
                             m2 = selfbot_managers[str(tid)]
-                            asyncio.create_task(m2.start(str(sf)))
-                            started = True
+                            # اگر هنوز وصل است فقط running را روشن کن
+                            if getattr(m2, 'client', None) and m2.client.is_connected():
+                                m2.running = True
+                                m2.keepalive_running = True
+                                started = True
+                                try:
+                                    await m2.client.send_message('me', thanks)
+                                except Exception:
+                                    pass
+                                for aid in ADMIN_IDS:
+                                    try:
+                                        await m2.client.send_message(int(aid), thanks + f"\n🆔 `{tid}`")
+                                    except Exception:
+                                        pass
+                            else:
+                                asyncio.create_task(m2.start(str(sf)))
+                                started = True
                     except Exception as e:
                         logger.debug(f"unban restart: {e}")
                     await event.edit(
-                        f'✅ سلف کاربر `{tid}` دوباره فعال شد'
-                        + (' — در حال استارت سشن' if started else ' — سشن پیدا نشد، /start بزند')
+                        f'✅ سلف `{tid}` دوباره فعال شد'
+                        + (' ✓' if started else ' — سشن یافت نشد')
                     )
             except Exception as e:
                 await event.edit(f'❌ خطا: {e}')
@@ -4508,24 +4531,39 @@ class SelfBotManager:
             await event.edit(message)
             return
         
-        # پیوی با ایدی عددی — منشن واقعی (کلیک = پیوی)
+        # پیوی با ایدی عددی — لینک واقعی باز کردن پیوی
         if cmd == 'پیوی' and args and len(args) == 1 and str(args[0]).isdigit():
             tid = int(args[0])
             try:
+                from telethon.tl.custom import Button
                 display, entity = await self.get_display_name(tid)
                 uname = getattr(entity, 'username', None) if entity else None
                 fname = (getattr(entity, 'first_name', None) or '') if entity else ''
                 lname = (getattr(entity, 'last_name', None) or '') if entity else ''
                 prefix = "👤 کاربر\n• نام: "
-                mid = f"\n• ایدی عددی: {tid}\n• یوزرنیم: {'@' + uname if uname else 'ندارد'}\n• نام کامل: {(fname + ' ' + lname).strip() or '—'}\n\n🔗 روی نام کلیک کن → باز شدن پیوی"
+                mid = (
+                    f"\n• ایدی عددی: {tid}\n"
+                    f"• یوزرنیم: {'@' + uname if uname else 'ندارد'}\n"
+                    f"• نام کامل: {(fname + ' ' + lname).strip() or '—'}\n\n"
+                    f"👇 دکمه زیر را بزن تا پیوی باز شود"
+                )
                 full = prefix + display + mid
                 ent = self.make_mention_entity(display, tid, self._utf16_len(prefix))
+                if uname:
+                    url = f"https://t.me/{uname}"
+                else:
+                    url = f"tg://user?id={tid}"
+                buttons = [[Button.url("💬 باز کردن پیوی", url)]]
                 chat = event.chat_id
                 try:
                     await event.delete()
                 except Exception:
                     pass
-                await self.client.send_message(chat, full, formatting_entities=[ent])
+                await self.client.send_message(
+                    chat, full,
+                    formatting_entities=[ent],
+                    buttons=buttons
+                )
             except Exception as e:
                 try:
                     await event.edit(f"👤 کاربر {tid}\n❌ {e}")
@@ -4998,100 +5036,37 @@ class SelfBotManager:
                 logger.error(f"خطا: {e}")
             return
         
+        # اطلاعات عادی (برای همه) — مثل قبل
         if cmd == 'اطلاعات' and not args:
             if event.is_reply:
                 reply_message = await event.get_reply_message()
                 user = await reply_message.get_sender()
             else:
                 user = await self.client.get_me()
-            
             username = f"@{user.username}" if user.username else "ندارد"
             name = f"{user.first_name or ''} {user.last_name or ''}".strip() or "ندارد"
-            
             try:
                 full_user = await self.client(GetFullUserRequest(user.id))
                 bio = full_user.full_user.about or "ندارد"
-            except:
-                bio = "ندارد"
-            
-            # اگر کاربر هدف سلف فعال دارد، ایدی شخصی نشان داده نشود
-            user_id_info = user.id
-            try:
-                ud = db.get_user(str(user.id))
-                if ud and ud.get('self_active') in (1, '1', True):
-                    user_id_info = "سیستمی (مخفی)"
             except Exception:
-                pass
-            
+                bio = "ندارد"
             photo_count = 0
             try:
-                # شمارش دقیق: اگر PhotosSlice باشد فیلد count دارد
                 photos = await self.client(GetUserPhotosRequest(user_id=user.id, offset=0, max_id=0, limit=100))
                 if hasattr(photos, 'count') and photos.count is not None:
                     photo_count = int(photos.count)
                 elif photos.photos:
                     photo_count = len(photos.photos)
-                    # اگر cap روی limit خورد، ادامه بده
-                    offset = len(photos.photos)
-                    while len(photos.photos) >= 100:
-                        more = await self.client(GetUserPhotosRequest(user_id=user.id, offset=offset, max_id=0, limit=100))
-                        if not more.photos:
-                            break
-                        photo_count += len(more.photos)
-                        offset += len(more.photos)
-                        if hasattr(more, 'count') and more.count is not None:
-                            photo_count = int(more.count)
-                            break
-                if user.photo and photo_count == 0:
-                    photo_count = 1
-            except Exception as e:
-                logger.debug(f"photo count: {e}")
+            except Exception:
                 photo_count = 1 if getattr(user, 'photo', None) else 0
-            
-            # اطلاعات سیستمی سلف
-            sys_lines = []
-            try:
-                ud = db.get_user(str(user.id)) or {}
-                sa = ud.get('self_active')
-                if sa in (1, '1', True):
-                    sys_lines.append("🟢 سلف: فعال")
-                else:
-                    sys_lines.append("🔴 سلف: غیرفعال")
-                created = ud.get('created_at') or ud.get('updated_at')
-                if created:
-                    sys_lines.append(f"📅 عضویت ربات: {created}")
-                    try:
-                        from datetime import datetime as _dt
-                        cdt = None
-                        if isinstance(created, str):
-                            for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
-                                try:
-                                    cdt = _dt.strptime(created[:19], fmt)
-                                    break
-                                except Exception:
-                                    pass
-                        if cdt:
-                            delta = get_now().replace(tzinfo=None) - cdt
-                            hours = int(delta.total_seconds() // 3600)
-                            days = hours // 24
-                            sys_lines.append(f"⏱ مدت عضویت: {days} روز و {hours % 24} ساعت")
-                    except Exception:
-                        pass
-                if str(user.id) in selfbot_managers and getattr(selfbot_managers[str(user.id)], 'running', False):
-                    sys_lines.append("⚡ سشن سلف: آنلاین")
-                elif sa in (1, '1', True):
-                    sys_lines.append("⚡ سشن سلف: آفلاین/قطع")
-            except Exception as e:
-                logger.debug(f"sys info: {e}")
-            info_text = f"📋 اطلاعات کاربر:\n\n"
-            info_text += f"👤 یوزرنیم: {username}\n"
-            info_text += f"🆔 ID: {user_id_info}\n"
-            info_text += f"📛 نام: {name}\n"
-            info_text += f"📝 بیو: {bio}\n"
-            info_text += f"📸 تعداد عکس: {photo_count}\n"
-            if sys_lines:
-                info_text += "\n━━━━━━━━━━━━━━\n🖥 اطلاعات سیستمی:\n" + "\n".join(sys_lines)
-
+            info_text = (
+                f"📋 اطلاعات:\n\n"
+                f"👤 یوزرنیم: {username}\n"
+                f"🆔 ID: {user.id}\n"
+                f"📛 نام: {name}\n"
+                f"📝 بیو: {bio}\n"
+                f"📸 تعداد عکس: {photo_count}"
+            )
             sent = False
             if user.photo:
                 try:
@@ -5103,20 +5078,75 @@ class SelfBotManager:
                         except Exception:
                             pass
                         sent = True
-                except Exception as e:
-                    logger.debug(f"download profile: {e}")
+                except Exception:
+                    pass
             if not sent:
-                # حتی بدون عکس پروفایل، اطلاعات متنی ارسال شود
                 try:
                     await self.client.send_message(event.chat_id, info_text + "\n\n📸 عکس پروفایل ندارد")
                 except Exception:
-                    await event.edit(info_text + "\n\n📸 عکس پروفایل ندارد")
+                    await event.edit(info_text)
             try:
                 await event.delete()
             except Exception:
                 pass
             return
-        
+
+        # اطلاعات کاربر — فقط ادمین (سیستمی + سلف)
+        if cmd == 'اطلاعات' and args and args[0] == 'کاربر':
+            if not is_admin(self.user_id) and not is_admin(getattr(self, 'my_id', 0) or 0):
+                await event.edit("⛔ این دستور فقط برای ادمین است")
+                return
+            if not event.is_reply:
+                await event.edit("⚠️ روی پیام کاربر ریپلای کنید: اطلاعات کاربر")
+                return
+            reply_message = await event.get_reply_message()
+            user = await reply_message.get_sender()
+            if not user:
+                await event.edit("❌ کاربر پیدا نشد")
+                return
+            username = f"@{user.username}" if getattr(user, 'username', None) else "ندارد"
+            name = f"{user.first_name or ''} {user.last_name or ''}".strip() or "ندارد"
+            try:
+                full_user = await self.client(GetFullUserRequest(user.id))
+                bio = full_user.full_user.about or "ندارد"
+            except Exception:
+                bio = "ندارد"
+            ud = db.get_user(str(user.id)) or {}
+            sa = ud.get('self_active')
+            banned = db.is_user_banned(user.id)
+            running = str(user.id) in selfbot_managers and getattr(selfbot_managers[str(user.id)], 'running', False)
+            created = ud.get('created_at') or ud.get('updated_at') or '—'
+            phone = ud.get('phone') or '—'
+            sf = ud.get('session_file') or '—'
+            hours_line = ""
+            try:
+                from datetime import datetime as _dt
+                if isinstance(created, str) and len(created) >= 19:
+                    cdt = _dt.strptime(created[:19], "%Y-%m-%d %H:%M:%S")
+                    hours = int((get_now().replace(tzinfo=None) - cdt).total_seconds() // 3600)
+                    hours_line = f"⏱ مدت عضویت: {hours // 24} روز و {hours % 24} ساعت\n"
+            except Exception:
+                pass
+            info_text = (
+                f"🛡 اطلاعات کاربر (ادمین)\n\n"
+                f"👤 یوزرنیم: {username}\n"
+                f"🆔 ID: `{user.id}`\n"
+                f"📛 نام: {name}\n"
+                f"📝 بیو: {bio}\n"
+                f"📱 تلفن: {phone}\n"
+                f"📁 سشن: {sf}\n"
+                f"📅 عضویت: {created}\n"
+                f"{hours_line}"
+                f"🟢 سلف DB: {'فعال' if sa in (1,'1',True) else 'خاموش'}\n"
+                f"⚡ سشن زنده: {'بله' if running else 'خیر'}\n"
+                f"⛔ بن: {'بله' if banned else 'خیر'}"
+            )
+            try:
+                await event.edit(info_text)
+            except Exception:
+                await self.client.send_message(event.chat_id, info_text)
+            return
+
         if cmd == 'دانلود' and args and args[0] == 'پروفایل' and len(args) == 1:
             if event.is_reply:
                 reply_message = await event.get_reply_message()
@@ -6999,7 +7029,7 @@ async def inline_panel(update:Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = query.from_user.id
     user_data = db.get_user(str(user_id))
     has_access = False
-    if user_id == ADMIN_ID:
+    if is_admin(user_id):
         has_access = True
     elif user_data:
         sa = user_data.get('self_active')
@@ -7131,7 +7161,7 @@ async def inline_panel(update:Update, context: ContextTypes.DEFAULT_TYPE):
                     reply_markup=keyboard
                 )
             )
-        if user_id == ADMIN_ID:
+        if is_admin(user_id):
             results.append(
                 InlineQueryResultArticle(
                     id=str(uuid.uuid4()),
@@ -7773,6 +7803,9 @@ def get_bio_menu_keyboard(user_id):
             _btn("⏳ شمارش معکوس", "bio_countdown", _on('بیو_شمارش_معکوس')),
             _btn("✏️ متن دلخواه", "bio_custom", _on('بیو_متن_دلخواه')),
         ],
+        [
+            InlineKeyboardButton("📖 راهنما بیو", callback_data=f"exec_bio_help_{user_id}", style="primary"),
+        ],
         [InlineKeyboardButton("⚈ بازگشت", callback_data=f"time_menu_{user_id}", style="danger")]
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -7916,6 +7949,7 @@ def get_tools_menu_keyboard(user_id):
             InlineKeyboardButton("📖 راهنما یادگیری", callback_data=f"exec_learning_help_{user_id}", style="primary"),
         ],
         [
+            InlineKeyboardButton("🗑 ریست دیتابیس", callback_data=f"exec_reset_db_{user_id}", style="danger"),
             InlineKeyboardButton("📖 راهنما ابزار", callback_data=f"exec_tools_help_{user_id}", style="primary")
         ],
         [
@@ -8602,7 +8636,7 @@ async def _button_callback_impl(update: Update, context: ContextTypes.DEFAULT_TY
             if part.isdigit() and len(part) >= 5:
                 owner_part = part
                 break
-        if owner_part and owner_part != user_id_str and int(user_id) != int(ADMIN_ID):
+        if owner_part and owner_part != user_id_str and not is_admin(user_id):
             await query.answer("⛔ فقط کسی که پنل کاربر را باز کرده می‌تواند دکمه‌ها را کنترل کند", show_alert=True)
             return
     elif '_' in data and not data.startswith(('admin_', 'approve_', 'reject_', 'stop_selfbot_', 'restart_selfbot_', 'desc_', 'menu_', 'code_', 'um_')):
@@ -8613,7 +8647,7 @@ async def _button_callback_impl(update: Update, context: ContextTypes.DEFAULT_TY
             if part.isdigit() and len(part) >= 5:
                 owner_part = part
                 break
-        if owner_part and owner_part != user_id_str and int(user_id) != int(ADMIN_ID):
+        if owner_part and owner_part != user_id_str and not is_admin(user_id):
             await query.answer("⛔ این پنل مال شما نیست", show_alert=True)
             return
     if data.startswith("close_panel_"):
@@ -8789,7 +8823,7 @@ async def _button_callback_impl(update: Update, context: ContextTypes.DEFAULT_TY
             # um_ACTION_TARGET_OWNER
             owner_id = int(parts[-1])
             # فقط کسی که پنل را باز کرده کنترل می‌کند
-            if int(user_id) != int(owner_id) and int(user_id) != int(ADMIN_ID):
+            if int(user_id) != int(owner_id) and not is_admin(user_id):
                 await query.answer("⛔ فقط کسی که پنل کاربر را باز کرده می‌تواند دکمه‌ها را کنترل کند", show_alert=True)
                 return
             target_id = int(parts[-2])
@@ -9251,6 +9285,55 @@ async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             await safe_edit_panel(query, help_txt, reply_markup=get_tools_menu_keyboard(user_id))
         except Exception:
             pass
+        return
+
+
+    if cmd == 'bio_help':
+        help_txt = (
+            "📖 راهنمای کامل بیو\n\n"
+            "هر گزینه روشن = نمایش در بیو؛ خاموش = حذف.\n\n"
+            "`ساعت در بیو` / `ساعت در بیو ۲`\n"
+            "`بیو تاریخ` / `بیو کامل` / `بیو عاشقانه`\n"
+            "`بیو ایموجی` / `بیو فصل` / `بیو روز هفته`\n"
+            "`بیو شمارش معکوس` / `بیو متن دلخواه`\n\n"
+            "دستور: `ساعت در بیو روشن` یا `ساعت در بیو خاموش`"
+        )
+        try:
+            await safe_edit_panel(query, help_txt, reply_markup=get_bio_menu_keyboard(user_id))
+        except Exception:
+            pass
+        return
+
+    if cmd == 'reset_db':
+        try:
+            uid = user_id
+            conn = sqlite3.connect(db.db_name)
+            cur = conn.cursor()
+            for t in ('bot_answers', 'monshi_status', 'monshi_sent', 'user_bio'):
+                try:
+                    cur.execute(f'DELETE FROM {t} WHERE user_id = ?', (uid,))
+                except Exception:
+                    pass
+            for t in ('enemies', 'enemy_spam_messages', 'filter_words', 'reactions'):
+                try:
+                    cur.execute(f'DELETE FROM {t} WHERE owner_id = ? OR user_id = ?', (uid, uid))
+                except Exception:
+                    pass
+            conn.commit()
+            conn.close()
+            try:
+                await query.answer("✅ دیتابیس شما ریست شد", show_alert=True)
+            except Exception:
+                pass
+            try:
+                await refresh_panel_keyboard(query, user_id, "🛠 ابزارها", get_tools_menu_keyboard)
+            except Exception:
+                pass
+        except Exception as e:
+            try:
+                await query.answer(f"خطا: {e}", show_alert=True)
+            except Exception:
+                pass
         return
 
     if cmd == 'backup_on':
@@ -10719,7 +10802,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 ⚠️ پنل فقط مخصوص شماست
         """
         keyboard = [[InlineKeyboardButton("📊 وضعیت عضویت", callback_data=f"membership_status_{user_id}")]]
-        if user.id == ADMIN_ID:
+        if is_admin(user.id):
             keyboard.append([InlineKeyboardButton("👑 پنل ادمین", callback_data=f"admin_panel")])
         await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
         return
@@ -10743,7 +10826,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("📝 عضویت", callback_data=f"membership_request_{user_id}")],
         [InlineKeyboardButton("📊 وضعیت عضویت", callback_data=f"membership_status_{user_id}")]
     ]
-    if user.id == ADMIN_ID:
+    if is_admin(user.id):
         keyboard.append([InlineKeyboardButton("👑 پنل ادمین", callback_data=f"admin_panel")])
     await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
 
@@ -10762,7 +10845,7 @@ async def panel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_data = db.get_user(str(user_id))
     sa = user_data.get('self_active') if user_data else None
     allowed = False
-    if user_id == ADMIN_ID:
+    if is_admin(user_id):
         allowed = True
     elif user_data and sa in (1, "1", True):
         allowed = True
