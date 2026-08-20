@@ -1842,24 +1842,31 @@ class MainDatabase:
             return False
 
     def ban_user(self, user_id, reason=''):
+        """فقط سلف را خاموش می‌کند — داده/سشن کاربر پاک نمی‌شود."""
         self.ensure_banned_table()
         conn = sqlite3.connect(self.db_name)
         cursor = conn.cursor()
-        cursor.execute('INSERT OR REPLACE INTO banned_users (user_id, reason) VALUES (?, ?)', (int(user_id), reason or ''))
+        cursor.execute('INSERT OR REPLACE INTO banned_users (user_id, reason) VALUES (?, ?)', (int(user_id), reason or 'self_off'))
         conn.commit()
         conn.close()
         try:
+            # فقط self_active=0 — session_file و بقیه فیلدها دست نخورده می‌مانند
             self.update_user(str(user_id), self_active=0)
         except Exception:
             pass
 
     def unban_user(self, user_id):
+        """آنبن: رفع بن + آماده‌سازی برای روشن شدن دوباره سلف."""
         self.ensure_banned_table()
         conn = sqlite3.connect(self.db_name)
         cursor = conn.cursor()
         cursor.execute('DELETE FROM banned_users WHERE user_id = ?', (int(user_id),))
         conn.commit()
         conn.close()
+        try:
+            self.update_user(str(user_id), self_active=1)
+        except Exception:
+            pass
 
     def get_monshi_status(self, user_id):
         conn = sqlite3.connect(self.db_name)
@@ -3091,62 +3098,67 @@ class SelfBotManager:
                     await event.edit('❌ کاربر پیدا نشد')
                     return
                 if cmd in ('.بن', 'بن') or command_text.strip().startswith('.بن'):
-                    db.ban_user(tid, 'admin ban')
+                    # فقط خاموش کردن سلف — بدون حذف اکانت/سشن
+                    db.ban_user(tid, 'self_off')
                     mgr = selfbot_managers.get(str(tid))
                     bye_txt = (
                         "👋 خداحافظ...\n"
-                        "من رفتم از اکانت.\n"
-                        "سلف‌بات توسط مدیریت متوقف شد."
+                        "سلف‌بات شما توسط مدیریت خاموش شد.\n"
+                        "(اکانت حذف نشده — با .انبن دوباره فعال می‌شود)"
                     )
-                    if mgr and getattr(mgr, 'client', None):
+                    if mgr:
                         try:
-                            await mgr.client.send_message('me', bye_txt)
-                        except Exception:
-                            pass
-                        try:
-                            await mgr.client.send_message(int(ADMIN_ID), bye_txt + f"\n🆔 `{tid}`")
-                        except Exception:
-                            pass
-                        try:
+                            if getattr(mgr, 'client', None) and mgr.client.is_connected():
+                                try:
+                                    await mgr.client.send_message('me', bye_txt)
+                                except Exception:
+                                    pass
                             mgr.running = False
-                            await mgr.client.disconnect()
-                        except Exception:
-                            pass
+                            mgr.keepalive_running = False
+                            try:
+                                if mgr.client:
+                                    await mgr.client.disconnect()
+                            except Exception:
+                                pass
+                        except Exception as e:
+                            logger.debug(f"ban stop mgr: {e}")
+                        # manager را نگه می‌داریم ولی running=False — حذف کامل نکن
                         try:
-                            selfbot_managers.pop(str(tid), None)
+                            selfbot_managers[str(tid)] = mgr
                         except Exception:
                             pass
                     try:
                         await self.client.send_message(tid, bye_txt)
                     except Exception:
                         pass
-                    await event.edit(f'⛔ کاربر `{tid}` بن شد — سلف خداحافظی کرد و متوقف شد')
+                    await event.edit(f'⛔ سلف کاربر `{tid}` خاموش شد (حذف نشد)')
                 else:
+                    # .انبن → روشن کردن دوباره
                     db.unban_user(tid)
-                    try:
-                        db.update_user(str(tid), self_active=1)
-                    except Exception:
-                        pass
                     thanks = (
-                        "✅ آنبن شدید.\n"
-                        "از صبوری‌تان متشکریم.\n"
-                        "می‌توانید دوباره /start بزنید و از سلف استفاده کنید."
+                        "✅ سلف شما دوباره فعال شد.\n"
+                        "از صبوری‌تان متشکریم."
                     )
                     try:
                         await self.client.send_message(tid, thanks)
                     except Exception:
                         pass
+                    started = False
                     try:
-                        ud = db.get_user(str(tid))
-                        sf = ud.get('session_file') if ud else None
+                        ud = db.get_user(str(tid)) or {}
+                        sf = ud.get('session_file')
                         if sf and os.path.exists(str(sf)):
                             if str(tid) not in selfbot_managers:
                                 selfbot_managers[str(tid)] = SelfBotManager(tid)
                             m2 = selfbot_managers[str(tid)]
                             asyncio.create_task(m2.start(str(sf)))
+                            started = True
                     except Exception as e:
                         logger.debug(f"unban restart: {e}")
-                    await event.edit(f'✅ کاربر `{tid}` آنبن شد — پیام تشکر ارسال شد')
+                    await event.edit(
+                        f'✅ سلف کاربر `{tid}` دوباره فعال شد'
+                        + (' — در حال استارت سشن' if started else ' — سشن پیدا نشد، /start بزند')
+                    )
             except Exception as e:
                 await event.edit(f'❌ خطا: {e}')
             return
@@ -4496,42 +4508,29 @@ class SelfBotManager:
             await event.edit(message)
             return
         
-        # پیوی با ایدی عددی — اسم قابل‌کلیک بدون نمایش tg://
+        # پیوی با ایدی عددی — منشن واقعی (کلیک = پیوی)
         if cmd == 'پیوی' and args and len(args) == 1 and str(args[0]).isdigit():
             tid = int(args[0])
             try:
-                entity = await self.resolve_user_entity(tid)
+                display, entity = await self.get_display_name(tid)
                 uname = getattr(entity, 'username', None) if entity else None
                 fname = (getattr(entity, 'first_name', None) or '') if entity else ''
                 lname = (getattr(entity, 'last_name', None) or '') if entity else ''
-                if uname:
-                    display = f"@{uname}"
-                elif fname or lname:
-                    display = f"{fname} {lname}".strip()
-                else:
-                    display = f"کاربر {tid}"
-                safe = (display.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;'))
-                name_link = f'<a href="tg://user?id={tid}">{safe}</a>'
-                text = (
-                    f"👤 کاربر\n"
-                    f"• نام: {name_link}\n"
-                    f"• ایدی عددی: <code>{tid}</code>\n"
-                    f"• یوزرنیم: {'@' + uname if uname else 'ندارد'}\n"
-                    f"• نام کامل: {(fname + ' ' + lname).strip() or '—'}\n\n"
-                    f"🔗 روی نام کلیک کن → باز شدن پیوی"
-                )
-                await event.edit(text, parse_mode='html')
+                prefix = "👤 کاربر\n• نام: "
+                mid = f"\n• ایدی عددی: {tid}\n• یوزرنیم: {'@' + uname if uname else 'ندارد'}\n• نام کامل: {(fname + ' ' + lname).strip() or '—'}\n\n🔗 روی نام کلیک کن → باز شدن پیوی"
+                full = prefix + display + mid
+                ent = self.make_mention_entity(display, tid, self._utf16_len(prefix))
+                chat = event.chat_id
+                try:
+                    await event.delete()
+                except Exception:
+                    pass
+                await self.client.send_message(chat, full, formatting_entities=[ent])
             except Exception as e:
                 try:
-                    text = (
-                        f"👤 کاربر\n"
-                        f"• نام: <a href=\"tg://user?id={tid}\">کاربر {tid}</a>\n"
-                        f"• ایدی: <code>{tid}</code>\n\n"
-                        f"🔗 روی نام کلیک کن → پیوی"
-                    )
-                    await event.edit(text, parse_mode='html')
+                    await event.edit(f"👤 کاربر {tid}\n❌ {e}")
                 except Exception:
-                    await event.edit(f"👤 کاربر {tid}")
+                    pass
             return
 
         if cmd == 'خاموش' and args and args[0] == 'پیوی' and len(args) == 1:
@@ -5939,56 +5938,63 @@ class SelfBotManager:
             pass
         return None
 
-    async def get_user_info(self, user_id, clickable=True):
-        """نام کاربر قابل‌کلیک (HTML) بدون نمایش tg://user?id= ..."""
+    @staticmethod
+    def _utf16_len(s):
+        return len((s or '').encode('utf-16-le')) // 2
+
+    async def get_display_name(self, user_id):
         uid = int(user_id)
         entity = await self.resolve_user_entity(uid)
+        if entity is not None:
+            uname = getattr(entity, 'username', None)
+            fname = (getattr(entity, 'first_name', None) or '').strip()
+            lname = (getattr(entity, 'last_name', None) or '').strip()
+            if uname:
+                return f"@{uname}", entity
+            if fname or lname:
+                return f"{fname} {lname}".strip(), entity
+        return f"کاربر {uid}", entity
+
+    async def get_user_info(self, user_id, clickable=True):
+        """نام نمایشی — برای گزارش‌ها فقط متن ساده (entity جدا اضافه می‌شود)."""
+        display, _ = await self.get_display_name(user_id)
+        return display
+
+    def make_mention_entity(self, display, user_id, offset):
+        """MessageEntityMentionName روی نام — کلیک = باز شدن پیوی."""
+        from telethon.tl.types import MessageEntityMentionName, MessageEntityTextUrl
+        length = self._utf16_len(display)
+        uid = int(user_id)
         try:
-            if entity is not None:
-                uname = getattr(entity, 'username', None)
-                fname = (getattr(entity, 'first_name', None) or '').strip()
-                lname = (getattr(entity, 'last_name', None) or '').strip()
-                display = f"@{uname}" if uname else (f"{fname} {lname}".strip() or f"کاربر {uid}")
-            else:
-                display = f"کاربر {uid}"
-            safe = (display
-                    .replace('&', '&amp;')
-                    .replace('<', '&lt;')
-                    .replace('>', '&gt;'))
-            if clickable:
-                # لینک مخفی — فقط اسم دیده می‌شود، کلیک = باز شدن پیوی
-                return f'<a href="tg://user?id={uid}">{safe}</a>'
-            return display
+            return MessageEntityMentionName(offset=offset, length=length, user_id=uid)
         except Exception:
-            if clickable:
-                return f'<a href="tg://user?id={uid}">کاربر {uid}</a>'
-            return f"کاربر {uid}"
+            return MessageEntityTextUrl(offset=offset, length=length, url=f"tg://user?id={uid}")
 
     async def send_clickable_user(self, chat_id, text_prefix, user_id, text_suffix=''):
-        """ارسال پیام با نام قابل‌کلیک کاربر (بدون نمایش raw link)."""
-        from telethon.tl.types import MessageEntityTextUrl, MessageEntityMentionName
-        uid = int(user_id)
-        entity = await self.resolve_user_entity(uid)
-        uname = getattr(entity, 'username', None) if entity else None
-        fname = (getattr(entity, 'first_name', None) or '').strip() if entity else ''
-        lname = (getattr(entity, 'last_name', None) or '').strip() if entity else ''
-        display = f"@{uname}" if uname else (f"{fname} {lname}".strip() or f"کاربر {uid}")
+        display, entity = await self.get_display_name(user_id)
         full = f"{text_prefix}{display}{text_suffix}"
-        # offset در UTF-16
-        def utf16_len(s):
-            return len(s.encode('utf-16-le')) // 2
-        start = utf16_len(text_prefix)
-        length = utf16_len(display)
-        entities = []
-        try:
-            if entity is not None and getattr(entity, 'access_hash', None) is not None:
-                entities = [MessageEntityMentionName(offset=start, length=length, user_id=uid)]
-            else:
-                entities = [MessageEntityTextUrl(offset=start, length=length, url=f"tg://user?id={uid}")]
-        except Exception:
-            entities = [MessageEntityTextUrl(offset=start, length=length, url=f"tg://user?id={uid}")]
-        await self.client.send_message(chat_id, full, formatting_entities=entities)
+        start = self._utf16_len(text_prefix)
+        ent = self.make_mention_entity(display, user_id, start)
+        await self.client.send_message(chat_id, full, formatting_entities=[ent])
         return full
+
+    async def build_text_with_user_mentions(self, parts):
+        """parts: لیست str یا tuple(user_id,) برای منشن.
+        مثال: ["🗑️ حذف\n👤 از: ", (sender_id,), "\n💬 چت: x"]
+        """
+        text = ''
+        entities = []
+        for p in parts:
+            if isinstance(p, tuple):
+                uid = int(p[0])
+                display, _ = await self.get_display_name(uid)
+                off = self._utf16_len(text)
+                entities.append(self.make_mention_entity(display, uid, off))
+                text += display
+            else:
+                text += str(p)
+        return text, entities
+
     
     def format_status_info(self, settings):
         try:
@@ -6425,25 +6431,26 @@ class SelfBotManager:
             if msg_id in media_cache and media_cache[msg_id].get('owner_id') == self.user_id:
                 try:
                     media_info = media_cache[msg_id]
-                    sender_info = await self.get_user_info(media_info['user_id'])
+                    sid = int(media_info['user_id'])
                     chat_title = await self.get_chat_title(media_info['chat_id'])
                     file_exists = os.path.exists(media_info['path']) if media_info.get('path') else False
-                    report_text = (
-                        f"🗑️ رسانه حذف‌شده\n"
-                        f"👤 از: {sender_info}\n"
-                        f"💬 چت: {chat_title}\n"
+                    report_text, ents = await self.build_text_with_user_mentions([
+                        "🗑️ رسانه حذف‌شده\n👤 از: ",
+                        (sid,),
+                        f"\n💬 چت: {chat_title}\n"
                         f"📦 نوع: {media_info['type']}\n"
                         f"🆔 پیام: {msg_id}\n"
-                        f"📝 کپشن: {media_info.get('caption', 'بدون کپشن')[:200]}\n"
+                        f"📝 کپشن: {str(media_info.get('caption', 'بدون کپشن') or 'بدون کپشن')[:200]}\n"
                         f"💾 فایل ذخیره‌شده: {'✅' if file_exists else '❌'}\n"
                         f"📏 حجم: {media_info.get('file_size', 0) / 1024:.1f} KB\n"
                         f"🕒 زمان ارسال: {media_info.get('timestamp', 'نامشخص')}\n"
-                        f"🕒 زمان حذف: {get_now().strftime('%Y/%m/%d %H:%M:%S')}"
-                    )
+                        f"🕒 زمان حذف: {get_now().strftime('%Y/%m/%d %H:%M:%S')}\n"
+                        f"🔗 روی اسم کلیک کن → پیوی"
+                    ])
                     if file_exists:
-                        await self.send_report(report_text, media_info['path'], f"🗑️ {media_info['type']} حذف‌شده از {sender_info}")
+                        await self.send_report(report_text, media_info['path'], report_text, entities=ents)
                     else:
-                        await self.send_report(report_text)
+                        await self.send_report(report_text, entities=ents)
                     del media_cache[msg_id]
                 except Exception as e:
                     logger.error(f"خطا در گزارش حذف رسانه {msg_id}: {e}")
@@ -6461,18 +6468,17 @@ class SelfBotManager:
                         else:
                             text = str(cached)
                             sender_id = chat_id
-                        sender_info = await self.get_user_info(sender_id)
                         chat_title = await self.get_chat_title(chat_id)
-                        report_text = (
-                            f"🗑️ پیام متنی حذف‌شده\n"
-                            f"👤 از: {sender_info}\n"
-                            f"💬 چت: {chat_title}\n"
-                            f"🆔 پیام: `{msg_id}`\n"
-                            f"📝 متن پیام:\n{text[:1000] or 'بدون متن'}\n"
+                        report_text, ents = await self.build_text_with_user_mentions([
+                            "🗑️ پیام متنی حذف‌شده\n👤 از: ",
+                            (int(sender_id),),
+                            f"\n💬 چت: {chat_title}\n"
+                            f"🆔 پیام: {msg_id}\n"
+                            f"📝 متن پیام:\n{(text[:1000] if text else 'بدون متن')}\n"
                             f"🕒 زمان: {get_now().strftime('%Y/%m/%d %H:%M:%S')}\n"
-                            f"🔗 کلیک روی اسم → پیوی کاربر"
-                        )
-                        await self.send_report(report_text)
+                            f"🔗 روی اسم کلیک کن → پیوی"
+                        ])
+                        await self.send_report(report_text, entities=ents)
                         del message_cache[(chat_id, msg_id)]
                     except Exception as e:
                         logger.error(f"خطا در گزارش حذف پیام: {e}")
@@ -6937,24 +6943,37 @@ class SelfBotManager:
             logger.error(f"خطا در ذخیره رسانه: {e}")
             return None
     
-    async def send_report(self, report_text, media_path=None, caption=None):
+    async def send_report(self, report_text, media_path=None, caption=None, entities=None, mention_ids=None):
+        """ارسال گزارش. mention_ids: لیست user_id برای تبدیل نام‌ها به منشن قابل‌کلیک."""
         try:
-            if self.report_config.report_group_id:
-                # HTML برای لینک‌های مخفی <a href="tg://user?id=...">
-                body = caption or report_text
-                if media_path and os.path.exists(media_path):
-                    await self.client.send_file(
-                        self.report_config.report_group_id, media_path,
-                        caption=body, parse_mode='html'
-                    )
-                    logger.info(f"گزارش با فایل ارسال شد: {media_path}")
-                else:
-                    await self.client.send_message(
-                        self.report_config.report_group_id, report_text, parse_mode='html'
-                    )
-                    logger.info(f"گزارش متنی ارسال شد")
-                return True
-            return False
+            if not self.report_config.report_group_id:
+                return False
+            body = caption or report_text
+            ents = list(entities or [])
+            # اگر mention_ids داده شده، اولین «از: NAME» یا کل نام‌های جدا را منشن کن
+            if mention_ids and not ents:
+                for uid in mention_ids:
+                    try:
+                        display, _ = await self.get_display_name(uid)
+                        idx = body.find(display)
+                        if idx >= 0:
+                            off = self._utf16_len(body[:idx])
+                            ents.append(self.make_mention_entity(display, uid, off))
+                    except Exception:
+                        pass
+            if media_path and os.path.exists(media_path):
+                await self.client.send_file(
+                    self.report_config.report_group_id, media_path,
+                    caption=body, formatting_entities=ents or None
+                )
+                logger.info(f"گزارش با فایل ارسال شد: {media_path}")
+            else:
+                await self.client.send_message(
+                    self.report_config.report_group_id, report_text,
+                    formatting_entities=ents or None
+                )
+                logger.info(f"گزارش متنی ارسال شد")
+            return True
         except Exception as e:
             try:
                 if media_path and os.path.exists(media_path):
