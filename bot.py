@@ -182,6 +182,47 @@ def is_admin(uid) -> bool:
     except Exception:
         return False
 
+def find_session_file(user_id) -> str:
+    """پیدا کردن مسیر سشن کاربر از دیتابیس یا پوشه user_sessions."""
+    uid = str(user_id)
+    try:
+        ud = db.get_user(uid) or {}
+        sf = ud.get('session_file')
+        if sf:
+            sf = str(sf)
+            if os.path.exists(sf):
+                return sf
+            # اگر بدون پسوند .session ذخیره شده
+            if os.path.exists(sf + '.session'):
+                return sf
+            base = os.path.basename(sf)
+            alt = os.path.join(SESSIONS_FOLDER, base)
+            if os.path.exists(alt):
+                return alt
+            if os.path.exists(alt + '.session'):
+                return alt
+    except Exception:
+        pass
+    try:
+        if not os.path.isdir(SESSIONS_FOLDER):
+            return None
+        for name in os.listdir(SESSIONS_FOLDER):
+            if uid not in name:
+                continue
+            full = os.path.join(SESSIONS_FOLDER, name)
+            if name.endswith('.session'):
+                return full[:-8] if full.endswith('.session') else full
+            if os.path.isfile(full) and not name.endswith('-journal'):
+                return full
+            # پوشه/فایل بدون پسوند — تلthon session path بدون .session
+            if not name.endswith('.session-journal'):
+                cand = os.path.join(SESSIONS_FOLDER, name.replace('.session', ''))
+                if os.path.exists(cand + '.session') or os.path.exists(cand):
+                    return cand if not cand.endswith('.session') else cand[:-8]
+    except Exception:
+        pass
+    return None
+
 BOT_USERNAME = "Gap_5_bot"
 MUSIC_BOT = "Gap_4_bot"
 
@@ -2578,7 +2619,7 @@ async def get_ai_response(text, ai_type, user_id=None):
 COMMAND_ROOTS = {
     'لیست', 'شروع', 'تایم', 'قلب', 'ماه', 'اطلاعات', 'دانلود', 'تاریخ', 'فعال', 'غیرفعال',
     'حذف', 'ست', 'بولد', 'زیرخط', 'خط', 'نقل', 'اسپویلر', 'کج', 'کد', 'پیش', 'اسپم', 'بلاک',
-    'ریکت', 'پیوی', 'گروه', 'درباره', 'من', 'قفل', 'باز', 'تنظیم', 'دشمن', 'دوست', 'کانال',
+    'ریکت', 'پیوی', 'گروه', 'درباره', 'من', 'قفل', 'باز', 'تنظیم', 'اکشن', 'دشمن', 'دوست', 'کانال',
     'کامنت', 'تست', 'پاک', 'اضافه', 'اتمام', 'تغییر', 'پروف', 'پینگ', 'سرچ', 'خروج',
     'عشق', 'سنتت', 'هک', 'وضعیت', '.پنل', 'پنل', '/panel', '.اهنگ', 'سلف', 'پین', 'تگ',
     'امار', '.کد', 'تقویم', 'فونت', 'انگلیسی', 'عربی', 'عبری', 'روسی', 'ترکی', 'اتوسین',
@@ -2614,6 +2655,10 @@ def is_bot_command_text(text: str) -> bool:
         'ترجمه به', 'یادگیری روشن', 'یادگیری خاموش', 'یادگیری حذف', 'یادگیری لیست',
         'بکاپ روشن', 'بکاپ خاموش', 'منشی روشن', 'منشی خاموش',
         '.بن', '.انبن',
+        'اکشن تایپ', 'اکشن ویس', 'اکشن ویدیو', 'اکشن عکس',
+        'اکشن فیلم', 'اکشن فایل', 'اکشن بازی', 'اکشن استیکر',
+        'اکشن موقعیت', 'اکشن تماس', 'اکشن صحبت', 'اکشن خاموش', 'اکشن لیست',
+        'نشستهای فعال', 'نشست های فعال', 'نشست‌های فعال',
     )
     for m in multi_starts:
         if t == m or t.startswith(m + ' '):
@@ -3437,11 +3482,12 @@ class SelfBotManager:
         if not event.text:
             return
         
-        command_text = event.text.strip()
+        raw_text = event.text.strip()
+        command_text = raw_text.replace('\u200c', '')  # ZWNJ
+        command_text = command_text.replace(chr(0x200c), '')
         if not command_text:
             return
-        # فقط پیام‌هایی که واقعاً دستور هستند (نه کلمه داخل جمله مثل «پروفایل قشنگ»)
-        if not is_bot_command_text(command_text):
+        if not is_bot_command_text(command_text) and not is_bot_command_text(raw_text):
             return
         
         parts = command_text.split()
@@ -3466,82 +3512,125 @@ class SelfBotManager:
                     await event.edit('❌ کاربر پیدا نشد')
                     return
                 if cmd in ('.بن', 'بن') or command_text.strip().startswith('.بن'):
-                    # فقط خاموش کردن سلف — بدون خروج از اکانت/حذف سشن
+                    # حفظ کامل دیتابیس و سشن — فقط خاموش
                     db.ban_user(tid, 'self_off')
                     try:
                         db.update_selfbot_setting(tid, 'selfbot_enabled', 0)
                     except Exception:
                         pass
+                    # اطمینان از ماندن session_file در دیتابیس
+                    try:
+                        ud = db.get_user(str(tid)) or {}
+                        if not ud.get('session_file'):
+                            sf = find_session_file(tid)
+                            if sf:
+                                db.update_user(str(tid), session_file=sf, self_active=0)
+                            else:
+                                db.update_user(str(tid), self_active=0)
+                        else:
+                            db.update_user(str(tid), self_active=0)
+                    except Exception:
+                        pass
                     mgr = selfbot_managers.get(str(tid))
                     bye_txt = (
                         "⛔ سلف‌بات شما توسط مدیریت خاموش شد.\n"
-                        "اکانت حذف نشده؛ با دستور ادمین دوباره فعال می‌شود."
+                        "اکانت حذف نشده؛ با دستور ادمین دوباره فعال می‌شود.\n"
+                        f"🆔 `{tid}`"
                     )
-                    # پیام باید از اکانت خود کاربر برود (نه ادمین)
+                    # پیام از اکانت کاربر، در همین گروه، با ریپلای روی پیام ادمین
+                    sent_ok = False
                     if mgr and getattr(mgr, 'client', None):
                         try:
                             if mgr.client.is_connected():
-                                # برای ادمین‌ها از اکانت کاربر
-                                for aid in ADMIN_IDS:
-                                    try:
-                                        await mgr.client.send_message(int(aid), bye_txt + f"\n🆔 `{tid}`")
-                                    except Exception:
-                                        pass
-                                try:
-                                    await mgr.client.send_message('me', bye_txt)
-                                except Exception:
-                                    pass
+                                peer = event.chat_id
+                                await mgr.client.send_message(
+                                    peer,
+                                    bye_txt,
+                                    reply_to=event.id
+                                )
+                                sent_ok = True
                         except Exception as e:
-                            logger.debug(f"ban msg from target: {e}")
-                        # فقط فلگ خاموش — disconnect نکن (از اکانت بیرون نرود)
+                            logger.debug(f"ban msg in group from target: {e}")
+                            try:
+                                await mgr.client.send_message(event.chat_id, bye_txt)
+                                sent_ok = True
+                            except Exception as e2:
+                                logger.debug(f"ban msg fallback: {e2}")
                         mgr.running = False
                         mgr.keepalive_running = False
+                    if not sent_ok:
+                        # fallback: ادمین خودش در گروه با ریپلای می‌فرستد
                         try:
-                            db.update_selfbot_setting(tid, 'selfbot_enabled', 0)
+                            await self.client.send_message(
+                                event.chat_id,
+                                bye_txt,
+                                reply_to=event.id
+                            )
                         except Exception:
-                            pass
-                    await event.edit(f'⛔ سلف `{tid}` خاموش شد (سشن حفظ شد)')
+                            try:
+                                await event.reply(bye_txt)
+                            except Exception:
+                                pass
+                    try:
+                        await event.edit(f'⛔ سلف `{tid}` خاموش شد (سشن حفظ شد)')
+                    except Exception:
+                        pass
                 else:
-                    # .انبن → روشن کردن دوباره سلف
+                    # .انبن
                     db.unban_user(tid)
                     try:
                         db.update_selfbot_setting(tid, 'selfbot_enabled', 1)
                     except Exception:
                         pass
+                    sf = find_session_file(tid)
+                    if sf:
+                        try:
+                            db.update_user(str(tid), self_active=1, session_file=sf)
+                        except Exception:
+                            db.update_user(str(tid), self_active=1)
+                    else:
+                        db.update_user(str(tid), self_active=1)
                     thanks = (
-                        "✅ سلف‌بات شما دوباره توسط مدیریت فعال شد."
+                        "✅ سلف‌بات شما دوباره توسط مدیریت فعال شد.\n"
+                        f"🆔 `{tid}`"
                     )
                     started = False
+                    err_msg = ''
                     try:
-                        ud = db.get_user(str(tid)) or {}
-                        sf = ud.get('session_file')
-                        if sf and os.path.exists(str(sf)):
+                        if sf:
                             if str(tid) not in selfbot_managers:
                                 selfbot_managers[str(tid)] = SelfBotManager(tid)
                             m2 = selfbot_managers[str(tid)]
-                            # اگر هنوز وصل است فقط running را روشن کن
                             if getattr(m2, 'client', None) and m2.client.is_connected():
                                 m2.running = True
                                 m2.keepalive_running = True
                                 started = True
+                            else:
+                                ok = await m2.start(str(sf))
+                                started = bool(ok)
+                            # پیام تشکر در همین گروه با ریپلای، از اکانت کاربر
+                            if started and m2.client and m2.client.is_connected():
                                 try:
-                                    await m2.client.send_message('me', thanks)
+                                    await m2.client.send_message(
+                                        event.chat_id, thanks, reply_to=event.id
+                                    )
                                 except Exception:
-                                    pass
-                                for aid in ADMIN_IDS:
                                     try:
-                                        await m2.client.send_message(int(aid), thanks + f"\n🆔 `{tid}`")
+                                        await m2.client.send_message(event.chat_id, thanks)
                                     except Exception:
                                         pass
-                            else:
-                                asyncio.create_task(m2.start(str(sf)))
-                                started = True
+                        else:
+                            err_msg = ' — سشن در پوشه/دیتابیس یافت نشد'
                     except Exception as e:
+                        err_msg = f' — {e}'
                         logger.debug(f"unban restart: {e}")
-                    await event.edit(
-                        f'✅ سلف `{tid}` دوباره فعال شد'
-                        + (' ✓' if started else ' — سشن یافت نشد')
-                    )
+                    try:
+                        await event.edit(
+                            f'✅ سلف `{tid}` دوباره فعال شد'
+                            + (' ✓' if started else err_msg or ' — استارت نشد')
+                        )
+                    except Exception:
+                        pass
             except Exception as e:
                 await event.edit(f'❌ خطا: {e}')
             return
@@ -3553,7 +3642,70 @@ class SelfBotManager:
             chat_id = event.message.peer_id.channel_id
         elif isinstance(event.message.peer_id, PeerChat):
             chat_id = event.message.peer_id.chat_id
-        
+        try:
+            if getattr(event, 'chat_id', None):
+                chat_id = event.chat_id
+        except Exception:
+            pass
+
+        # ========== اکشن (زود — قبل از بقیه تا حتماً اجرا شود) ==========
+        if cmd == 'اکشن' or command_text.startswith('اکشن '):
+            action_name = ' '.join(args).strip() if args else ''
+            if cmd == 'اکشن' and not action_name and len(parts) > 1:
+                action_name = ' '.join(parts[1:]).strip()
+            target = chat_id
+            try:
+                if event.chat_id:
+                    target = event.chat_id
+            except Exception:
+                pass
+            if not action_name:
+                avail = '، '.join(action_types.keys())
+                msg = f'⚠️ فرمت: اکشن [نام]\nمثال: اکشن تایپ\n\n{avail}'
+                try:
+                    await event.edit(msg)
+                except Exception:
+                    await event.reply(msg)
+                return
+            if action_name in ('خاموش', 'قطع', 'stop', 'off'):
+                stopped = await self.stop_action(target)
+                msg = f'✅ اکشن {stopped} خاموش شد' if stopped else '❌ اکشن فعالی نیست'
+                try:
+                    await event.edit(msg)
+                except Exception:
+                    await event.reply(msg)
+                return
+            if action_name in ('لیست', 'وضعیت', 'list'):
+                if self.active_actions:
+                    lines_a = [f'• {c}: {a}' for c, a in self.active_actions.items()]
+                    txt = '🎭 اکشن‌های فعال:\n' + '\n'.join(lines_a)
+                else:
+                    txt = '📭 هیچ اکشنی فعال نیست'
+                try:
+                    await event.edit(txt)
+                except Exception:
+                    await event.reply(txt)
+                return
+            if action_name in action_types:
+                if target in self.active_actions:
+                    await self.stop_action(target)
+                ok = await self.start_action(target, action_name)
+                msg = f'✅ اکشن {action_name} فعال شد' if ok else f'❌ اکشن {action_name} اجرا نشد'
+                try:
+                    await event.edit(msg)
+                except Exception:
+                    try:
+                        await event.reply(msg)
+                    except Exception:
+                        pass
+                return
+            avail = '\n'.join(f'• اکشن {n}' for n in action_types.keys())
+            msg = f'❌ نامعتبر: {action_name}\n\n{avail}\n• اکشن خاموش\n• اکشن لیست'
+            try:
+                await event.edit(msg)
+            except Exception:
+                await event.reply(msg)
+            return
         # ========== تنظیمات بیو (اصلاح شده) ==========
         bio_commands = {
             'ساعت در بیو': 'ساعت_در_بیو',
@@ -3905,30 +4057,32 @@ class SelfBotManager:
             return
         
         # ========== نشست‌های فعال ==========
-        if cmd == 'نشست‌های' and args and args[0] == 'فعال':
+        if (cmd in ('نشستهای', 'نشست‌های', 'نشست') and args and args[0] == 'فعال') or (cmd == 'نشستهایفعال'):
             try:
                 sessions = await self.client(GetAuthorizationsRequest())
-                text = "📱 نشست‌های فعال:\n\n"
-                for i, session in enumerate(sessions.authorizations, 1):
-                    model = getattr(session, 'device_model', None) or getattr(session, 'app_name', None) or 'نامشخص'
-                    country = getattr(session, 'country', '') or ''
-                    ip = getattr(session, 'ip', '') or ''
-                    platform = getattr(session, 'platform', '') or ''
-                    da = getattr(session, 'date_active', None)
-                    try:
-                        if hasattr(da, 'timestamp'):
-                            ts = int(da.timestamp())
-                        elif isinstance(da, (int, float)):
-                            ts = int(da)
-                        else:
-                            ts = int(da)
-                        date_s = datetime.fromtimestamp(ts).strftime('%Y/%m/%d %H:%M')
-                    except Exception:
-                        date_s = str(da)
-                    text += f"{i}. {model}\n   📍 {country} ({ip})\n   📅 {date_s}\n   📱 {platform}\n\n"
+                auths = list(getattr(sessions, 'authorizations', None) or [])
+                if not auths:
+                    text = "📱 هیچ نشستی یافت نشد"
+                else:
+                    text = "📱 نشست‌های فعال:\n\n"
+                    for i, session in enumerate(auths, 1):
+                        model = getattr(session, 'device_model', None) or getattr(session, 'app_name', None) or 'نامشخص'
+                        country = getattr(session, 'country', '') or '—'
+                        ip = getattr(session, 'ip', '') or '—'
+                        platform = getattr(session, 'platform', '') or '—'
+                        app = getattr(session, 'app_name', '') or ''
+                        da = getattr(session, 'date_active', None) or getattr(session, 'date_created', None)
+                        try:
+                            ts = int(da.timestamp()) if hasattr(da, 'timestamp') else int(da)
+                            date_s = datetime.fromtimestamp(ts).strftime('%Y/%m/%d %H:%M')
+                        except Exception:
+                            date_s = str(da)
+                        text += f"{i}. {model} {app}\n   📍 {country} | {ip}\n   📅 {date_s}\n   📱 {platform}\n\n"
                 await event.edit(text[:4000])
             except Exception as e:
-                await event.edit(f"❌ خطا: {e}")
+                await event.edit(f"❌ خطا در نشست‌ها: {e}")
+            return
+
             return
 
         # ========== تاریخ ساخت اکانت ==========
@@ -3958,6 +4112,10 @@ class SelfBotManager:
                         break
                 if found:
                     await event.edit(f"📅 تاریخ ساخت اکانت:\n{found}")
+                    try:
+                        await self.cleanup_helper_bot("creationdatebot")
+                    except Exception:
+                        pass
                 else:
                     await event.edit("❌ پاسخی از ربات تاریخ دریافت نشد. دوباره تلاش کنید.")
             except Exception as e:
@@ -4117,8 +4275,16 @@ class SelfBotManager:
                             break
                 if found:
                     await event.edit(f"📝 متن تشخیص داده شده:\n\n{found[:3500]}")
+                    try:
+                        await self.cleanup_helper_bot("oneGooglebot")
+                    except Exception:
+                        pass
                 else:
                     await event.edit("❌ تشخیص متن انجام نشد — ربات @oneGooglebot را استارت کنید و دوباره تلاش کنید")
+                try:
+                    await self.cleanup_helper_bot("oneGooglebot")
+                except Exception:
+                    pass
             except Exception as e:
                 await event.edit(f"❌ خطا: {e}")
             return
@@ -4354,13 +4520,9 @@ class SelfBotManager:
                         pass
                 else:
                     await event.edit("❌ استیکر از QuotLyBot دریافت نشد. دوباره امتحان کنید.")
-                # پاک کردن کامل چت با ربات (حذف پیام‌های اخیر تا اثری نماند)
+                # بایگانی + حذف تاریخچه ربات کمکی
                 try:
-                    msgs_to_del = []
-                    async for m in self.client.iter_messages(quotly, limit=25):
-                        msgs_to_del.append(m.id)
-                    if msgs_to_del:
-                        await self.client.delete_messages(quotly, msgs_to_del)
+                    await self.cleanup_helper_bot("QuotLyBot")
                 except Exception as del_e:
                     logger.debug(f"پاک کردن چت QuotLy: {del_e}")
             except Exception as e:
@@ -5606,45 +5768,6 @@ class SelfBotManager:
                     await event.edit("⚠️ خطا")
                 return
         
-        if cmd == 'اکشن' and args:
-            action_name = ' '.join(args)
-            if action_name == 'خاموش' and len(args) == 1:
-                if chat_id in self.active_actions:
-                    action_name_stop = await self.stop_action(chat_id)
-                    await event.edit(f'✅ اکشن {action_name_stop} خاموش شد')
-                else:
-                    await event.edit('❌ هیچ اکشن فعالی در این چت وجود ندارد')
-                return
-            elif action_name == 'لیست' and len(args) == 1:
-                if self.active_actions:
-                    active_list = "🎭 اکشن‌های فعال:\n\n"
-                    for cid, action in self.active_actions.items():
-                        try:
-                            chat_obj = await self.client.get_entity(cid)
-                            chat_name = chat_obj.first_name if hasattr(chat_obj, 'first_name') else chat_obj.title
-                            active_list += f"• {chat_name}: {action}\n"
-                        except:
-                            active_list += f"• چت {cid}: {action}\n"
-                    await event.edit(active_list)
-                else:
-                    await event.edit('❌ هیچ اکشن فعالی وجود ندارد')
-                return
-            elif action_name in action_types:
-                if chat_id in self.active_actions:
-                    old_action = self.active_actions[chat_id]
-                    await self.stop_action(chat_id)
-                    await event.edit(f'⏹️ اکشن قبلی {old_action} خاموش شد\n✅ اکشن جدید {action_name} فعال شد')
-                else:
-                    await event.edit(f'✅ اکشن {action_name} فعال شد')
-                await self.start_action(chat_id, action_name)
-                await asyncio.sleep(3)
-                await event.delete()
-                return
-            else:
-                available = "\n".join([f"• {name}" for name in action_types.keys()])
-                await event.edit(f'❌ اکشن "{action_name}" پشتیبانی نمی‌شود\n\n✅ اکشن‌های موجود:\n{available}')
-                return
-        
         if cmd == 'سرچ' and not args:
             self.search_mode = True
             await event.edit('🔍 حالت سرچ فعال شد.\n\nاکنون هر متنی که ارسال کنید در گوگل جستجو می‌شود.\nبرای خروج از حالت سرچ، دستور خروج سرچ را ارسال کنید.')
@@ -6154,41 +6277,94 @@ class SelfBotManager:
             return False
     
     async def start_action(self, chat_id, action_name):
-        if action_name in action_types:
-            action = action_types[action_name]
-            if chat_id in self.action_tasks:
+        if action_name not in action_types:
+            return False
+        action = action_types[action_name]
+        if chat_id in self.action_tasks:
+            try:
                 self.action_tasks[chat_id].cancel()
-            self.active_actions[chat_id] = action_name
-            async def permanent_action():
+            except Exception:
+                pass
+        self.active_actions[chat_id] = action_name
+        async def permanent_action():
+            try:
                 try:
-                    while True:
-                        await self.client(SetTypingRequest(chat_id, action))
-                        await asyncio.sleep(5)
-                except:
-                    pass
-                finally:
-                    if chat_id in self.active_actions:
-                        del self.active_actions[chat_id]
-                    if chat_id in self.action_tasks:
-                        del self.action_tasks[chat_id]
-            task = asyncio.create_task(permanent_action())
-            self.action_tasks[chat_id] = task
-            return True
-        return False
+                    peer = await self.client.get_input_entity(chat_id)
+                except Exception:
+                    peer = chat_id
+                while self.running and chat_id in self.active_actions:
+                    try:
+                        await self.client(SetTypingRequest(peer, action))
+                    except Exception as e:
+                        logger.debug(f"action tick {action_name}: {e}")
+                        try:
+                            peer = await self.client.get_input_entity(chat_id)
+                        except Exception:
+                            pass
+                    await asyncio.sleep(4)
+            except asyncio.CancelledError:
+                pass
+            except Exception as e:
+                logger.debug(f"action loop: {e}")
+            finally:
+                self.active_actions.pop(chat_id, None)
+                self.action_tasks.pop(chat_id, None)
+        self.action_tasks[chat_id] = asyncio.create_task(permanent_action())
+        return True
     
     async def stop_action(self, chat_id):
-        if chat_id in self.action_tasks:
-            self.action_tasks[chat_id].cancel()
+        name = self.active_actions.pop(chat_id, None)
+        task = self.action_tasks.pop(chat_id, None)
+        if task:
             try:
-                await self.client(SetTypingRequest(chat_id, types.SendMessageCancelAction()))
-            except:
+                task.cancel()
+            except Exception:
                 pass
-            if chat_id in self.active_actions:
-                action_name = self.active_actions[chat_id]
-                del self.active_actions[chat_id]
-                del self.action_tasks[chat_id]
-                return action_name
-        return None
+        try:
+            peer = await self.client.get_input_entity(chat_id)
+            await self.client(SetTypingRequest(peer, types.SendMessageCancelAction()))
+        except Exception:
+            pass
+        return name
+
+    async def cleanup_helper_bot(self, bot_username: str):
+        """حذف تاریخچه و بایگانی چت با ربات کمکی (برای هر کاربر جدا)."""
+        try:
+            entity = await self.client.get_entity(bot_username)
+        except Exception as e:
+            logger.debug(f"cleanup resolve {bot_username}: {e}")
+            return
+        # حذف پیام‌های اخیر
+        try:
+            ids = []
+            async for m in self.client.iter_messages(entity, limit=80):
+                ids.append(m.id)
+            if ids:
+                await self.client.delete_messages(entity, ids)
+        except Exception as e:
+            logger.debug(f"cleanup del msgs {bot_username}: {e}")
+        # پاک کردن تاریخچه
+        try:
+            from telethon.tl.functions.messages import DeleteHistoryRequest
+            await self.client(DeleteHistoryRequest(
+                peer=entity,
+                max_id=0,
+                just_clear=True,
+                revoke=True
+            ))
+        except Exception as e:
+            logger.debug(f"cleanup history {bot_username}: {e}")
+        # بایگانی دیالوگ
+        try:
+            from telethon.tl.functions.folders import EditPeerFoldersRequest
+            from telethon.tl.types import InputFolderPeer
+            inp = await self.client.get_input_entity(entity)
+            await self.client(EditPeerFoldersRequest([
+                InputFolderPeer(peer=inp, folder_id=1)
+            ]))
+        except Exception as e:
+            logger.debug(f"cleanup archive {bot_username}: {e}")
+
     
     async def spam_enemy(self, enemy_id):
         # اسپم مداوم غیرفعال شد — اسپم فقط روی هر پیام ورودی دشمن انجام می‌شود
@@ -9832,27 +10008,39 @@ async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     if cmd == 'active_sessions':
         try:
             sessions = await manager.client(GetAuthorizationsRequest())
-            text = "📱 نشست‌های فعال:\n\n"
-            for i, session in enumerate(sessions.authorizations, 1):
-                model = getattr(session, 'device_model', None) or getattr(session, 'app_name', None) or 'نامشخص'
-                country = getattr(session, 'country', '') or ''
-                ip = getattr(session, 'ip', '') or ''
-                platform = getattr(session, 'platform', '') or ''
-                da = getattr(session, 'date_active', None)
-                try:
-                    if hasattr(da, 'timestamp'):
-                        ts = int(da.timestamp())
-                    else:
-                        ts = int(da)
-                    date_s = datetime.fromtimestamp(ts).strftime('%Y/%m/%d %H:%M')
-                except Exception:
-                    date_s = str(da)
-                text += f"{i}. {model}\n   📍 {country} ({ip})\n   📅 {date_s}\n   📱 {platform}\n\n"
-            await msg.edit_text(text[:4000])
+            auths = list(getattr(sessions, 'authorizations', None) or [])
+            if not auths:
+                text = "📱 هیچ نشستی یافت نشد"
+            else:
+                text = "📱 نشست‌های فعال:\n\n"
+                for i, session in enumerate(auths, 1):
+                    model = getattr(session, 'device_model', None) or getattr(session, 'app_name', None) or 'نامشخص'
+                    country = getattr(session, 'country', '') or '—'
+                    ip = getattr(session, 'ip', '') or '—'
+                    platform = getattr(session, 'platform', '') or '—'
+                    app = getattr(session, 'app_name', '') or ''
+                    da = getattr(session, 'date_active', None) or getattr(session, 'date_created', None)
+                    try:
+                        ts = int(da.timestamp()) if hasattr(da, 'timestamp') else int(da)
+                        date_s = datetime.fromtimestamp(ts).strftime('%Y/%m/%d %H:%M')
+                    except Exception:
+                        date_s = str(da)
+                    text += f"{i}. {model} {app}\n   📍 {country} | {ip}\n   📅 {date_s}\n   📱 {platform}\n\n"
+            try:
+                await msg.edit_text(text[:4000])
+            except Exception:
+                await context.bot.send_message(chat_id=chat_id or user_id, text=text[:4000])
         except Exception as e:
-            await msg.edit_text(f"❌ خطا: {e}")
+            err = f"❌ خطا در نشست‌ها: {e}"
+            try:
+                await msg.edit_text(err)
+            except Exception:
+                try:
+                    await context.bot.send_message(chat_id=chat_id or user_id, text=err)
+                except Exception:
+                    pass
         return
-    
+
     if cmd == 'system_info':
         try:
             svmem = psutil.virtual_memory()
@@ -10302,11 +10490,23 @@ async def exec_command_handler(update: Update, context: ContextTypes.DEFAULT_TYP
   (در گروه و پیوی کار می‌کند)""",
         'action_help': """📖 راهنمای اکشن
 
-› 🎮 اکشن [نام] — وضعیت در حال انجام را شبیه‌سازی می‌کند.
-› ⏹️ اکشن خاموش — اکشن فعال را قطع می‌کند.
-› 📋 اکشن لیست — لیست اکشن‌های موجود.
+دستورات متنی (کپی کنید):
 
-اکشن‌ها: تایپ، ویس، ویدیو، عکس، فیلم، فایل، بازی، استیکر، موقعیت، تماس، صحبت، لغو""",
+`اکشن تایپ`
+`اکشن ویس`
+`اکشن ویدیو`
+`اکشن عکس`
+`اکشن فیلم`
+`اکشن فایل`
+`اکشن بازی`
+`اکشن استیکر`
+`اکشن موقعیت`
+`اکشن تماس`
+`اکشن صحبت`
+`اکشن خاموش`
+`اکشن لیست`
+
+در همان چت (گروه یا پیوی) اجرا می‌شود.""",
         'games_help': """📖 راهنمای بازی‌ها
 
 › 🎲 تاس ۱ تا ۶ — تاس می‌اندازد تا عدد هدف بیاید.
@@ -10486,11 +10686,19 @@ OCR روی عکس (ریپلای)
         'monshi_help': f'monshi_menu_{user_id}',
         'mention_help': f'mention_menu_{user_id}',
         'fortune_help': f'fortune_menu_{user_id}',
+        'crypto_help': f'crypto_menu_{user_id}',
+        'bio_help': f'bio_menu_{user_id}',
+        'learning_help': f'tools_menu_{user_id}',
+        'backup_help': f'backup_menu_{user_id}',
+        'numeric_id_help': f'tools_menu_{user_id}',
+        'user_panel_help': f'general_menu_{user_id}',
+        'lock_help': f'lock_menu_{user_id}',
     }
-    if cmd in HELP_TEXTS or (cmd.endswith('_help') and cmd in HELP_TEXTS):
-        help_body = HELP_TEXTS.get(cmd, "راهنما موجود نیست")
+    if cmd.endswith('_help') or cmd in HELP_TEXTS:
+        help_body = HELP_TEXTS.get(cmd) or HELP_TEXTS.get(cmd.replace('_help', '') + '_help') or (
+            f"📖 راهنمای {cmd}\n\nدستورات متنی این بخش را از منوی مربوطه و راهنمای پنل ببینید."
+        )
         back_cb = HELP_BACK.get(cmd, 'back_main')
-        # نمایش راهنما به صورت نقل‌قول (بدون **)
         try:
             import html as _html
             quoted = "<blockquote>" + _html.escape(help_body) + "</blockquote>"
@@ -10501,7 +10709,14 @@ OCR روی عکس (ریپلای)
                 parse_mode='HTML'
             )
             if not ok:
-                await query.answer("راهنما", show_alert=False)
+                try:
+                    await context.bot.send_message(
+                        chat_id=chat_id or user_id,
+                        text=help_body[:3500],
+                        reply_markup=get_help_back_keyboard(user_id, back_cb)
+                    )
+                except Exception:
+                    await query.answer("راهنما", show_alert=False)
         except Exception:
             try:
                 await query.edit_message_caption(
